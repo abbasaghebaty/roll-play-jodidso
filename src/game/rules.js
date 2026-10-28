@@ -1,9 +1,9 @@
 // قوانین فعلی بازی؛ مبنای مقادیر از توضیحات /rules و فایل testmode.js است.
-// هزینه‌های اضافه برای نوع‌های خاص در این نسخه ۱۰ NP هستند؛ در صورت داشتن مقدار توافق‌شده، این دو مقدار را تغییر بده.
+// هزینه‌ی اضافه: همگانی (AOE) = ۱۰ NP ، غیرقابل‌دفاع = ۵ NP (طبق قوانین توافق‌شده).
 export const STEP = 5;
 export const MAX_SPAM = 2;
 export const AOE_EXTRA = 10;
-export const UNDEFENDABLE_EXTRA = 10;
+export const UNDEFENDABLE_EXTRA = 5;
 
 export function d10() {
   return Math.floor(Math.random() * 10) + 1;
