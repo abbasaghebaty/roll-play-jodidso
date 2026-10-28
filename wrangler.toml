@@ -1,0 +1,17 @@
+
+name = "anime-rpg-bot"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "anime-rpg"
+database_id = "a94e7427-3f74-4021-bd43-e3dbaada4795"
+
+# آیدی عددی مسترهای گروه
+[vars]
+MASTER_IDS = "7548075013"
+
+# مقادیر محرمانه را با wrangler secret تنظیم کن، نه داخل این فایل:
+# npx wrangler secret put BOT_TOKEN
+# npx wrangler secret put WEBHOOK_SECRET
