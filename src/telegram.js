@@ -1,3 +1,5 @@
+import { logEvent, plain } from './log.js';
+
 export function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -8,23 +10,52 @@ export function mention(p) {
   return `<a href="tg://user?id=${p.user_id}">${esc(p.name)}</a>`;
 }
 
-export async function send(env, chatId, text, replyTo) {
-  if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
-  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+async function callTelegram(env, method, body) {
+  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-      ...(replyTo == null ? {} : { reply_to_message_id: replyTo }),
-      allow_sending_without_reply: true,
-    }),
+    ...(body instanceof FormData ? { body } : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   });
   let result;
   try { result = await response.json(); } catch { /* handled below */ }
+  return { response, result };
+}
+
+export async function send(env, chatId, text, replyTo) {
+  if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
+  const base = {
+    chat_id: chatId,
+    ...(replyTo == null ? {} : { reply_to_message_id: replyTo }),
+    allow_sending_without_reply: true,
+  };
+  let { response, result } = await callTelegram(env, 'sendMessage', { ...base, text, parse_mode: 'HTML' });
+
+  // اگر HTML خراب بود، همان متن را ساده می‌فرستیم تا پیام گم نشود
+  if ((!response.ok || !result?.ok) && /parse entities/i.test(result?.description || '')) {
+    console.error('HTML parse failed, resending as plain text:', result?.description);
+    ({ response, result } = await callTelegram(env, 'sendMessage', { ...base, text: plain(text) }));
+  }
   if (!response.ok || !result?.ok) {
     throw new Error(`Telegram sendMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
   }
+  await logEvent(env, { chat: chatId, kind: 'out', msgId: result.result?.message_id, text: plain(text) });
+  return result;
+}
+
+// ارسال یک فایل متنی/JSON
+export async function sendDocument(env, chatId, filename, content, caption = '', replyTo) {
+  if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
+  const form = new FormData();
+  form.append('chat_id', String(chatId));
+  if (caption) form.append('caption', caption.slice(0, 1000));
+  if (replyTo != null) {
+    form.append('reply_to_message_id', String(replyTo));
+    form.append('allow_sending_without_reply', 'true');
+  }
+  form.append('document', new Blob([content], { type: 'application/json' }), filename);
+  const { response, result } = await callTelegram(env, 'sendDocument', form);
+  if (!response.ok || !result?.ok) {
+    throw new Error(`Telegram sendDocument failed (${response.status}): ${result?.description || 'unknown error'}`);
+  }
+  await logEvent(env, { chat: chatId, kind: 'out', msgId: result.result?.message_id, text: `[فایل] ${filename}` });
   return result;
 }

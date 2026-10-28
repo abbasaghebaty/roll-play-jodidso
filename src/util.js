@@ -2,10 +2,23 @@ import { send } from './telegram.js';
 
 export const say = (ctx, text) => send(ctx.env, ctx.chat, text, ctx.msgId);
 
-// در پیوی ربات (حالت تست) هر کاربر مستر بازی خودش است
+const idList = (s) => (s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+// جست‌وجوی امن در آبجکت‌ها: «constructor» و «__proto__» را به‌عنوان کلید قبول نمی‌کند
+export function own(obj, key) {
+  return typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
+}
+
+// در پیوی ربات (حالت تست) هر کاربر مستر بازی خودش است.
+// ادمینِ ناشناس گروه (Anonymous Admin) هم مستر حساب می‌شود، چون تلگرام آیدی واقعی‌اش را نمی‌فرستد.
 export function isMaster(ctx) {
-  if (ctx.private) return true;
-  return (ctx.env.MASTER_IDS || '').split(',').map((s) => s.trim()).includes(String(ctx.uid));
+  if (ctx.private || ctx.anonAdmin) return true;
+  return idList(ctx.env.MASTER_IDS).includes(String(ctx.uid));
+}
+
+// دسترسی به بررسی گزارش‌ها و لاگ‌ها: MASTER_IDS و OWNER_IDS (بدون میان‌بُر پیوی)
+export function isStaff(ctx) {
+  return [...idList(ctx.env.MASTER_IDS), ...idList(ctx.env.OWNER_IDS)].includes(String(ctx.uid));
 }
 
 // d1 → -1 ، d2 → -2 (بازیکن‌های دامی در حالت تست آیدی منفی دارند)

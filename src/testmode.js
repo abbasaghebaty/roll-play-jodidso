@@ -1,5 +1,5 @@
 // حالت تست: فقط در پیوی ربات کار می‌کند. بازیکن تنهاست و دو دامی (d1 و d2) دارد.
-import { say, resolveId } from './util.js';
+import { say, resolveId, own } from './util.js';
 import { esc } from './telegram.js';
 import { run } from './db.js';
 import { getPlayer } from './game/engine.js';
@@ -28,7 +28,7 @@ export async function test(ctx) {
   if (!(await only(ctx))) return;
   const { env, chat, uid } = ctx;
   const key = (ctx.args[0] || 'yuji').toLowerCase();
-  const c = CHARACTERS[key];
+  const c = own(CHARACTERS, key);
   if (!c || c.hidden) return say(ctx, 'کاراکتر پیدا نشد. لیست: /chars');
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'active', ?)", chat, uid);
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
@@ -72,12 +72,16 @@ export async function roll(ctx) {
 // /sim [تکنیک] — جدول دمیج و هزینه برای نتیجه‌ی ۱ تا ۹
 export async function sim(ctx) {
   const key = (ctx.args[0] || 'blackflash').toLowerCase();
-  const t = TECHNIQUES[key];
+  const t = own(TECHNIQUES, key);
   if (!t) return say(ctx, 'تکنیک پیدا نشد: ' + Object.keys(TECHNIQUES).join(', '));
   const lines = [];
   for (let r = 1; r <= 9; r++) {
     const dmg = techDamage(t, r);
-    lines.push(`نتیجه ${r}: دمیج ${dmg} | هزینه عادی ${npCost(dmg, 'normal')} | همگانی ${npCost(dmg, 'aoe')} | غیرقابل‌دفاع ${npCost(dmg, 'undefendable')}`);
+    lines.push(
+      t.free
+        ? `نتیجه ${r}: دمیج ${dmg} | بدون هزینه NP`
+        : `نتیجه ${r}: دمیج ${dmg} | هزینه عادی ${npCost(dmg, 'normal')} | همگانی ${npCost(dmg, 'aoe')} | غیرقابل‌دفاع ${npCost(dmg, 'undefendable')}`
+    );
   }
   await say(ctx, `📊 ${esc(t.name)} (پایه ${t.base}، نوع ${t.kind}):\n${lines.join('\n')}`);
 }
@@ -85,7 +89,7 @@ export async function sim(ctx) {
 // /simdef [دفاع] — جدول مقدار دفاع برای تاس ۱ تا ۱۰
 export async function simdef(ctx) {
   const key = (ctx.args[0] || 'dodge').toLowerCase();
-  const d = DEFENSES[key];
+  const d = own(DEFENSES, key);
   if (!d) return say(ctx, 'دفاع پیدا نشد: ' + Object.keys(DEFENSES).join(', '));
   const lines = [];
   for (let r = 1; r <= 10; r++) lines.push(`تاس ${r}: ${defenseValue(d, r)}`);
@@ -130,7 +134,7 @@ export async function rules(ctx) {
       '• تاس: دو تاس ۱ تا ۱۰. نتیجه = مثبت − منفی (حداکثر ۹). صفر یا منفی = خنثی و نوبت می‌پرد.',
       `• دمیج = پایه‌ی تکنیک + ${STEP} × (نتیجه − ۱). مثال بلک‌فلش: نتیجه ۱ = ۴۰ ، نتیجه ۹ = ۸۰.`,
       `• هزینه NP = (دمیج ÷ ۲، گرد به پایین تا مضرب ۵) + ۵. همگانی +${AOE_EXTRA} ، غیرقابل‌دفاع +${UNDEFENDABLE_EXTRA}.`,
-      '• اگر NP کم باشد: تکنیک شکست می‌خورد و نوبت می‌پرد.',
+      '• اگر NP کم باشد: تکنیک شکست می‌خورد و نوبت می‌پرد. (مشت موقتی NP مصرف نمی‌کند.)',
       `• ضد اسپم: حداکثر ${MAX_SPAM} بار پشت هم یک تکنیک؛ بار سوم ممنوع.`,
       '• دفاع: پایه + افزایش × تاس d10 مخصوص همان دفاع. دفاع فقط از دمیج کم می‌کند (کمتر از صفر نمی‌شود).',
       '• ضدحمله نداریم. هر کس در نوبت خودش حمله می‌کند. حمله‌ی همگانی: هر آسیب‌دیده جداگانه دفاع می‌کند.',

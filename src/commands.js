@@ -5,12 +5,16 @@ import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue, MAX_SPAM } from './game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
-import { say, isMaster, resolveId, dummyId } from './util.js';
+import { say, isMaster, resolveId, dummyId, own } from './util.js';
+import { logEvent } from './log.js';
 import * as T from './testmode.js';
+import * as R from './report.js';
+
+const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
 export async function handleUpdate(update, env) {
   const m = update.message;
-  if (!m || !m.text || !m.text.startsWith('/')) return;
+  if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
   const cmd = parts[0].slice(1).split('@')[0].toLowerCase();
   const priv = m.chat.type === 'private';
@@ -21,10 +25,14 @@ export async function handleUpdate(update, env) {
     uid: m.from.id,
     uname: [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || 'بازیکن',
     args: parts.slice(1),
+    rawArgs: m.text.trim().replace(/^\S+\s*/, ''), // متن کامل بعد از دستور (برای /bug)
     msgId: m.message_id,
-    reply: !priv && m.reply_to_message ? m.reply_to_message.from : null,
+    reply: !priv && m.reply_to_message ? m.reply_to_message.from || null : null,
+    replyMsg: m.reply_to_message || null,
+    anonAdmin: !priv && m.from.id === ANON_ADMIN_ID && m.sender_chat?.id === m.chat.id,
   };
-  const handler = HANDLERS[cmd];
+  await logEvent(env, { chat: ctx.chat, user: ctx.uid, kind: 'in', msgId: ctx.msgId, text: m.text });
+  const handler = own(HANDLERS, cmd);
   if (handler) await handler(ctx);
 }
 
@@ -44,18 +52,29 @@ async function afterResolve(ctx) {
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
+// نوبت را به نفر بعد می‌دهد (در پیوی/حالت تست نوبت نداریم)
+async function passTurn(ctx) {
+  if (ctx.private) return '';
+  const next = await advanceTurn(ctx.env, ctx.chat);
+  return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
+}
+
 async function resolveHits(ctx, target, defValue, label) {
   const { env, chat } = ctx;
   const rows = await all(env.DB, 'SELECT * FROM pending WHERE chat_id=? AND target_id=?', chat, target.user_id);
   if (!rows.length) return say(ctx, 'حمله‌ای منتظر دفاع این بازیکن نیست.');
   const out = [];
   for (const r of rows) {
+    // اول حذف می‌کنیم؛ اگر کس دیگری (مثلاً دوبار زدن /defend) زودتر حلش کرده بود، دمیج دوباره اعمال نمی‌شود
+    const del = await run(env.DB, 'DELETE FROM pending WHERE id=?', r.id);
+    if (del?.meta?.changes === 0) continue;
     const final = Math.max(0, r.dmg - defValue);
     const res = await applyDamage(env, chat, target, final);
     target.hp = res.hp;
     out.push(`${label}: دفاع ${defValue} از ${r.dmg} دمیج ← ${final} دمیج خورد.\n❤️ جان ${mention(target)}: ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`);
-    await run(env.DB, 'DELETE FROM pending WHERE id=?', r.id);
+    await logEvent(env, { chat, user: target.user_id, kind: 'event', text: 'defend', data: { attacker: r.attacker_id, tech: r.tech, dmg: r.dmg, defense: defValue, final, hp_after: res.hp, dead: res.dead } });
   }
+  if (!out.length) return say(ctx, 'این حمله قبلاً حل شده.');
   const tail = await afterResolve(ctx);
   await say(ctx, out.join('\n') + tail);
 }
@@ -142,7 +161,7 @@ async function join(ctx) {
   const game = await getGame(env, chat);
   if (!game || game.status !== 'lobby') return say(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
   const key = (ctx.args[0] || '').toLowerCase();
-  const c = CHARACTERS[key];
+  const c = own(CHARACTERS, key);
   if (!c || c.hidden) return say(ctx, 'کاراکتر پیدا نشد. لیست: /chars');
   if (await getPlayer(env, chat, ctx.uid)) return say(ctx, 'قبلاً وارد شده‌ای.');
   const taken = await first(env.DB, 'SELECT user_id FROM players WHERE chat_id=? AND char_key=?', chat, key);
@@ -202,7 +221,7 @@ async function attack(ctx) {
   if (waiting.n > 0) return say(ctx, 'هنوز دفاع حمله‌ی قبلی تمام نشده.');
 
   const key = (ctx.args[0] || '').toLowerCase();
-  const tech = TECHNIQUES[key];
+  const tech = own(TECHNIQUES, key);
   if (!tech || (!ctx.private && !CHARACTERS[me.char_key].techs.includes(key))) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
   if (me.last_tech === key && me.spam >= MAX_SPAM) return say(ctx, `❌ ضد اسپم: ${MAX_SPAM} بار پشت هم زدی، تکنیک دیگری بزن.`);
 
@@ -225,19 +244,22 @@ async function attack(ctx) {
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
   if (roll.result <= 0) {
-    const next = await advanceTurn(env, chat);
-    return say(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${next ? `\n\n🎯 نوبت: ${mention(next)}` : ''}`);
+    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-neutral', data: { tech: key, roll } });
+    return say(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
   }
 
   const dmg = techDamage(tech, roll.result);
-  const cost = npCost(dmg, tech.kind);
+  // تکنیک‌های free (مثل مشت موقتی) NP مصرف نمی‌کنند
+  const cost = tech.free ? 0 : npCost(dmg, tech.kind);
   if (me.np < cost) {
-    const next = await advanceTurn(env, chat);
-    return say(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${next ? `\n\n🎯 نوبت: ${mention(next)}` : ''}`);
+    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
+    return say(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
 
   const spam = me.last_tech === key ? me.spam + 1 : 1;
-  await run(env.DB, 'UPDATE players SET np=np-?, last_tech=?, spam=? WHERE chat_id=? AND user_id=?', cost, key, spam, chat, uid);
+  const paid = await run(env.DB, 'UPDATE players SET np=np-?, last_tech=?, spam=? WHERE chat_id=? AND user_id=? AND np>=?', cost, key, spam, chat, uid, cost);
+  if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
+  await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack', data: { tech: key, kind: tech.kind, roll, dmg, cost, np_before: me.np, targets: targets.map((t) => t.user_id) } });
 
   let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
   if (tech.kind === 'undefendable') {
@@ -258,7 +280,7 @@ async function attack(ctx) {
 
 async function defend(ctx) {
   const key = (ctx.args[0] || '').toLowerCase();
-  const def = DEFENSES[key];
+  const def = own(DEFENSES, key);
   if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');
   const who = ctx.private && ctx.args[1] ? resolveId(ctx, ctx.args[1]) : ctx.uid;
   const me = await getPlayer(ctx.env, ctx.chat, who);
@@ -296,6 +318,11 @@ async function help(ctx) {
       '/effect poison|drain|clear — (ریپلای)',
       '/nodefend — (ریپلای) رد کردن دفاع یک بازیکن',
       '',
+      '<b>گزارش مشکل</b>',
+      '/bug توضیح — (ریپلای روی پیامی که مشکل داشت) ثبت گزارش',
+      '/id — آیدی عددی تو و چت',
+      '<b>بررسی (فقط مستر/سازنده):</b> /bugs /bugshow N /bugdone N /bugopen N /bugexport /logs',
+      '',
       '<b>حالت تست (فقط پیوی ربات)</b>',
       '/test [کاراکتر] — بازی تستی با دو دامی d1 و d2',
       '/attack تکنیک d1 — /hit d1 تکنیک — /defend dodge [d1] — /nodefend [d1]',
@@ -331,4 +358,15 @@ const HANDLERS = {
   set: T.set,
   fill: T.fill,
   rules: T.rules,
+  bug: R.bug,
+  report: R.bug,
+  باگ: R.bug,
+  مشکل: R.bug,
+  bugs: R.bugs,
+  bugshow: R.bugshow,
+  bugdone: R.bugdone,
+  bugopen: R.bugopen,
+  bugexport: R.bugexport,
+  logs: R.logs,
+  id: R.id,
 };
