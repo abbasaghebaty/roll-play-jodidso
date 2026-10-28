@@ -1,16 +1,21 @@
-
 name = "anime-rpg-bot"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
+
+[observability]
+enabled = true
 
 [[d1_databases]]
 binding = "DB"
 database_name = "anime-rpg"
 database_id = "a94e7427-3f74-4021-bd43-e3dbaada4795"
 
-# آیدی عددی مسترهای گروه
 [vars]
+# آیدی عددی مسترهای گروه (چند نفر را با ویرگول جدا کن)
 MASTER_IDS = "7548075013"
+# آیدی عددی سازنده/تستر که باید گزارش‌ها و لاگ‌ها را ببیند (با /id در ربات پیدا می‌شود).
+# مسترها هم خودکار دسترسی دارند. چند نفر را با ویرگول جدا کن، مثلاً "111,222"
+OWNER_IDS = ""
 
 # مقادیر محرمانه را با wrangler secret تنظیم کن، نه داخل این فایل:
 # npx wrangler secret put BOT_TOKEN
