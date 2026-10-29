@@ -85,7 +85,12 @@ export default {
         console.error('Could not save error log:', logError);
       }
 
-      if (m?.chat?.id) {
+      // اگر خود دستور گزارش باگ شکست خورد، پیام درخواست /bug نفرست؛
+      // وگرنه کاربر با ریپلای روی خطا دوباره /bug می‌زند و حلقه ساخته می‌شود.
+      const command = String(m?.text || '').trim().split(/\\s+/, 1)[0].split('@')[0].toLowerCase();
+      const isBugCommand = ['/bug', '/report', '/باگ', '/مشکل'].includes(command);
+
+      if (m?.chat?.id && !isBugCommand) {
         try {
           await send(
             env,
