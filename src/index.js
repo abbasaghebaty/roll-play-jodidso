@@ -90,14 +90,18 @@ export default {
       const command = String(m?.text || '').trim().split(/\\s+/, 1)[0].split('@')[0].toLowerCase();
       const isBugCommand = ['/bug', '/report', '/باگ', '/مشکل'].includes(command);
 
-      if (m?.chat?.id && !isBugCommand) {
+      if (m?.chat?.id) {
         try {
-          await send(
-            env,
-            m.chat.id,
-            `⚠️ خطای داخلی ربات${logId ? ` (لاگ #${logId})` : ''}.\nروی همین پیام ریپلای بزن و با <code>/bug</code> توضیح بده چه کاری کرده بودی.`,
-            m.message_id
-          );
+          if (isBugCommand) {
+            await send(env, m.chat.id, '⚠️ ثبت گزارش با خطا مواجه شد؛ خطا برای بررسی در لاگ سرور ثبت شده است. لطفاً فعلاً گزارش را دوباره ارسال نکن.', m.message_id);
+          } else {
+            await send(
+              env,
+              m.chat.id,
+              `⚠️ خطای داخلی ربات${logId ? ` (لاگ #${logId})` : ''}.\\nروی همین پیام ریپلای بزن و با <code>/bug</code> توضیح بده چه کاری کرده بودی.`,
+              m.message_id
+            );
+          }
         } catch (e2) {
           console.error('Could not notify chat about error:', e2);
         }
