@@ -59,3 +59,41 @@ export async function sendDocument(env, chatId, filename, content, caption = '',
   await logEvent(env, { chat: chatId, kind: 'out', msgId: result.result?.message_id, text: `[فایل] ${filename}` });
   return result;
 }
+
+
+export async function sendKeyboard(env, chatId, text, replyMarkup) {
+  if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
+  const { response, result } = await callTelegram(env, 'sendMessage', {
+    chat_id: chatId, text, parse_mode: 'HTML', reply_markup: replyMarkup,
+    disable_web_page_preview: true,
+  });
+  if (!response.ok || !result?.ok) throw new Error(`Telegram sendMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
+  await logEvent(env, { chat: chatId, kind: 'out', msgId: result.result?.message_id, text: plain(text) });
+  return result;
+}
+
+export async function editMessage(env, chatId, messageId, text, replyMarkup) {
+  const { response, result } = await callTelegram(env, 'editMessageText', {
+    chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML',
+    reply_markup: replyMarkup, disable_web_page_preview: true,
+  });
+  if ((!response.ok || !result?.ok) && /message is not modified/i.test(result?.description || '')) return result;
+  if (!response.ok || !result?.ok) throw new Error(`Telegram editMessageText failed (${response.status}): ${result?.description || 'unknown error'}`);
+  return result;
+}
+
+export async function pinMessage(env, chatId, messageId) {
+  const { response, result } = await callTelegram(env, 'pinChatMessage', {
+    chat_id: chatId, message_id: messageId, disable_notification: true,
+  });
+  if (!response.ok || !result?.ok) throw new Error(`Telegram pinChatMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
+  return result;
+}
+
+export async function answerCallback(env, callbackId, text) {
+  const { response, result } = await callTelegram(env, 'answerCallbackQuery', {
+    callback_query_id: callbackId, text, show_alert: false,
+  });
+  if (!response.ok || !result?.ok) console.error('Telegram answerCallbackQuery failed:', result?.description || response.status);
+  return result;
+}

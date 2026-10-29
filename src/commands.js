@@ -9,10 +9,12 @@ import { say, isMaster, resolveId, dummyId, own } from './util.js';
 import { logEvent } from './log.js';
 import * as T from './testmode.js';
 import * as R from './report.js';
+import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel } from './game/ui.js';
 
 const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
 export async function handleUpdate(update, env) {
+  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend, join: async (ctx, key) => { ctx.args = [key]; return join(ctx); } });
   const m = update.message;
   if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
@@ -46,9 +48,11 @@ async function afterResolve(ctx) {
   if (ctx.private) return ''; // حالت تست: بازی تمام نمی‌شود و نوبت نداریم
   const win = await checkWin(env, chat);
   if (win) {
+    await refreshBattlePanel(env, chat);
     return `\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`;
   }
   const next = await advanceTurn(env, chat);
+  await refreshBattlePanel(env, chat);
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -56,6 +60,7 @@ async function afterResolve(ctx) {
 async function passTurn(ctx) {
   if (ctx.private) return '';
   const next = await advanceTurn(ctx.env, ctx.chat);
+  await refreshBattlePanel(ctx.env, ctx.chat);
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -88,6 +93,7 @@ async function newgame(ctx) {
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
   await say(ctx, '🎮 بازی جدید ساخته شد. بازیکن‌ها با <code>/join کلید_کاراکتر</code> وارد شوند. لیست کاراکترها: /chars');
+  await ensureBattlePanel(env, chat);
 }
 
 async function team(ctx) {
@@ -110,6 +116,7 @@ async function begin(ctx) {
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
   await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
   await say(ctx, `⚔️ بازی شروع شد!\n🎯 نوبت: ${mention(players[0])}\n\nحمله: <code>/attack کلید_تکنیک</code> (روی پیام هدف ریپلای کن)`);
+  await ensureBattlePanel(env, chat);
 }
 
 async function buff(ctx) {
@@ -146,7 +153,7 @@ async function effect(ctx) {
 }
 
 // مستر می‌تواند دفاع یک بازیکن را رد کند (بدون دفاع)
-async function nodefend(ctx) {
+export async function nodefend(ctx) {
   let targetId = ctx.uid;
   if (isMaster(ctx)) targetId = resolveId(ctx, ctx.args[0]) || ctx.uid;
   const p = await getPlayer(ctx.env, ctx.chat, targetId);
@@ -173,6 +180,7 @@ async function join(ctx) {
     chat, ctx.uid, ctx.uname, key, c.hp, c.hp, c.np, c.np, cnt.n
   );
   await say(ctx, `✅ ${esc(ctx.uname)} شد ${esc(c.name)}\n❤️ ${c.hp}  🔮 ${c.np}`);
+  await refreshBattlePanel(env, chat);
 }
 
 async function chars(ctx) {
@@ -209,7 +217,7 @@ async function status(ctx) {
   await say(ctx, `📋 وضعیت (${game.status}):\n` + (lines.join('\n') || 'بازیکنی نیست.'));
 }
 
-async function attack(ctx) {
+export async function attack(ctx) {
   const { env, chat } = ctx;
   const uid = ctx.asId ?? ctx.uid; // در تست، /hit دامی را مهاجم می‌کند
   const game = await getGame(env, chat);
@@ -275,10 +283,11 @@ async function attack(ctx) {
     await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
   text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}\n<code>/defend dodge</code> یا /nodefend`;
+  await refreshBattlePanel(env, chat);
   await say(ctx, text);
 }
 
-async function defend(ctx) {
+export async function defend(ctx) {
   const key = (ctx.args[0] || '').toLowerCase();
   const def = own(DEFENSES, key);
   if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');

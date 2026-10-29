@@ -71,3 +71,10 @@ CREATE INDEX IF NOT EXISTS idx_reports_status ON reports (status, id);
 CREATE TABLE IF NOT EXISTS processed_updates (
   update_id INTEGER PRIMARY KEY
 );
+
+
+-- پیام ثابت پنل مبارزه؛ افزودن این جدول داده‌های بازی‌های قبلی را تغییر نمی‌دهد.
+CREATE TABLE IF NOT EXISTS battle_ui (
+  chat_id INTEGER PRIMARY KEY,
+  message_id INTEGER NOT NULL
+);
