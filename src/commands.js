@@ -48,9 +48,11 @@ async function afterResolve(ctx) {
   if (ctx.private) return ''; // حالت تست: بازی تمام نمی‌شود و نوبت نداریم
   const win = await checkWin(env, chat);
   if (win) {
+    await refreshBattlePanel(env, chat);
     return `\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`;
   }
   const next = await advanceTurn(env, chat);
+  await refreshBattlePanel(env, chat);
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -58,6 +60,7 @@ async function afterResolve(ctx) {
 async function passTurn(ctx) {
   if (ctx.private) return '';
   const next = await advanceTurn(ctx.env, ctx.chat);
+  await refreshBattlePanel(ctx.env, ctx.chat);
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -280,6 +283,7 @@ export async function attack(ctx) {
     await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
   text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}\n<code>/defend dodge</code> یا /nodefend`;
+  await refreshBattlePanel(env, chat);
   await say(ctx, text);
 }
 
