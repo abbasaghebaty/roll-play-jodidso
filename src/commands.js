@@ -177,6 +177,7 @@ async function join(ctx) {
     chat, ctx.uid, ctx.uname, key, c.hp, c.hp, c.np, c.np, cnt.n
   );
   await say(ctx, `✅ ${esc(ctx.uname)} شد ${esc(c.name)}\n❤️ ${c.hp}  🔮 ${c.np}`);
+  await refreshBattlePanel(env, chat);
 }
 
 async function chars(ctx) {
