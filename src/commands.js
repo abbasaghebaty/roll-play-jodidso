@@ -9,10 +9,12 @@ import { say, isMaster, resolveId, dummyId, own } from './util.js';
 import { logEvent } from './log.js';
 import * as T from './testmode.js';
 import * as R from './report.js';
+import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel } from './game/ui.js';
 
 const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
 export async function handleUpdate(update, env) {
+  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend });
   const m = update.message;
   if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
@@ -88,6 +90,7 @@ async function newgame(ctx) {
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
   await say(ctx, '🎮 بازی جدید ساخته شد. بازیکن‌ها با <code>/join کلید_کاراکتر</code> وارد شوند. لیست کاراکترها: /chars');
+  await ensureBattlePanel(env, chat);
 }
 
 async function team(ctx) {
@@ -110,6 +113,7 @@ async function begin(ctx) {
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
   await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
   await say(ctx, `⚔️ بازی شروع شد!\n🎯 نوبت: ${mention(players[0])}\n\nحمله: <code>/attack کلید_تکنیک</code> (روی پیام هدف ریپلای کن)`);
+  await ensureBattlePanel(env, chat);
 }
 
 async function buff(ctx) {
@@ -146,7 +150,7 @@ async function effect(ctx) {
 }
 
 // مستر می‌تواند دفاع یک بازیکن را رد کند (بدون دفاع)
-async function nodefend(ctx) {
+export async function nodefend(ctx) {
   let targetId = ctx.uid;
   if (isMaster(ctx)) targetId = resolveId(ctx, ctx.args[0]) || ctx.uid;
   const p = await getPlayer(ctx.env, ctx.chat, targetId);
@@ -209,7 +213,7 @@ async function status(ctx) {
   await say(ctx, `📋 وضعیت (${game.status}):\n` + (lines.join('\n') || 'بازیکنی نیست.'));
 }
 
-async function attack(ctx) {
+export async function attack(ctx) {
   const { env, chat } = ctx;
   const uid = ctx.asId ?? ctx.uid; // در تست، /hit دامی را مهاجم می‌کند
   const game = await getGame(env, chat);
@@ -278,7 +282,7 @@ async function attack(ctx) {
   await say(ctx, text);
 }
 
-async function defend(ctx) {
+export async function defend(ctx) {
   const key = (ctx.args[0] || '').toLowerCase();
   const def = own(DEFENSES, key);
   if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');
