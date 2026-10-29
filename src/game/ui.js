@@ -62,6 +62,12 @@ export async function renderBattlePanel(env, chat, messageId = null) {
   return id;
 }
 
+export async function ensureBattlePanel(env, chat) {
+  const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
+  if (state?.message_id) return refreshBattlePanel(env, chat);
+  return renderBattlePanel(env, chat);
+}
+
 export async function refreshBattlePanel(env, chat) {
   const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
   if (!state?.message_id) return;
