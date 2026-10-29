@@ -90,9 +90,9 @@ export async function pinMessage(env, chatId, messageId) {
   return result;
 }
 
-export async function answerCallback(env, callbackId, text) {
+export async function answerCallback(env, callbackId, text, showAlert = false) {
   const { response, result } = await callTelegram(env, 'answerCallbackQuery', {
-    callback_query_id: callbackId, text, show_alert: false,
+    callback_query_id: callbackId, text, show_alert: showAlert,
   });
   if (!response.ok || !result?.ok) console.error('Telegram answerCallbackQuery failed:', result?.description || response.status);
   return result;
