@@ -26,7 +26,10 @@ export async function renderBattlePanel(env, chat, messageId = null) {
   if (game.status === 'ended') text += '\n\n🏆 بازی به پایان رسید.';
   const rows = [];
   if (game.status === 'lobby') {
-    rows.push([{ text: '👤 ثبت‌نام با دستور /join', callback_data: 'rp:info' }]);
+    const available = Object.entries(CHARACTERS).filter(([, c]) => !c.hidden);
+    for (let i = 0; i < available.length; i += 2) {
+      rows.push(available.slice(i, i + 2).map(([key, c]) => ({ text: `👤 ${c.name}`, callback_data: `rp:j:${key}` })));
+    }
   } else if (game.status === 'active') {
     if (current) {
       const techs = CHARACTERS[current.char_key]?.techs || [];
@@ -81,9 +84,9 @@ export async function handleBattleCallback(query, env, handlers) {
   const uid = query.from?.id;
   if (!m || !uid || !data.startsWith('rp:')) return answerCallback(env, query.id, 'این دکمه معتبر نیست.');
   const chat = m.chat.id;
-  if (data === 'rp:info') return answerCallback(env, query.id, 'برای ثبت‌نام، دستور /join کلید_کاراکتر را بفرست.');
+  if (data === 'rp:info') return answerCallback(env, query.id, 'برای ثبت‌نام، یکی از شخصیت‌های پنل را انتخاب کن.');
   const game = await getGame(env, chat);
-  if (!game || game.status !== 'active') return answerCallback(env, query.id, 'الان بازی فعال نیست.');
+  if (!game) return answerCallback(env, query.id, 'بازی‌ای پیدا نشد.');
   const [, action, key, targetRaw] = data.split(':');
   const target = Number(targetRaw);
   const ctx = {
@@ -92,6 +95,14 @@ export async function handleBattleCallback(query, env, handlers) {
     args: [], rawArgs: '', msgId: m.message_id, reply: null, replyMsg: null,
     anonAdmin: false, interactive: true,
   };
+  if (action === 'j') {
+    if (game.status !== 'lobby') return answerCallback(env, query.id, 'ثبت‌نام بسته شده؛ بازی شروع شده است.');
+    await answerCallback(env, query.id, 'در حال ثبت‌نام…');
+    await handlers.join(ctx, key);
+    await refreshBattlePanel(env, chat);
+    return;
+  }
+  if (game.status !== 'active') return answerCallback(env, query.id, 'الان بازی فعال نیست.');
   if (action === 'a') {
     if (game.turn_user !== uid) return answerCallback(env, query.id, 'نوبت تو نیست.');
     ctx.args = [key, target ? String(target) : ''];
