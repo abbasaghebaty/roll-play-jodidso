@@ -78,3 +78,10 @@ CREATE TABLE IF NOT EXISTS battle_ui (
   chat_id INTEGER PRIMARY KEY,
   message_id INTEGER NOT NULL
 );
+
+
+-- آخرین بازیکنی که پیام نوبت اختصاصی برایش ارسال شده؛ برای جلوگیری از اعلان تکراری.
+CREATE TABLE IF NOT EXISTS battle_turn_ui (
+  chat_id INTEGER PRIMARY KEY,
+  turn_user INTEGER NOT NULL
+);
