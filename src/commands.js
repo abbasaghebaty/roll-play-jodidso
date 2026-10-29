@@ -14,7 +14,7 @@ import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel } from './g
 const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
 export async function handleUpdate(update, env) {
-  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend });
+  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend, join: async (ctx, key) => { ctx.args = [key]; return join(ctx); } });
   const m = update.message;
   if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
