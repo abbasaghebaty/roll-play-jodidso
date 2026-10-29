@@ -66,6 +66,9 @@ export async function renderBattlePanel(env, chat, messageId = null) {
 }
 
 export async function ensureBattlePanel(env, chat) {
+  const game = await getGame(env, chat);
+  // هر بازی جدید باید اعلان نوبت را از نو فعال کند، حتی اگر نفر اول همان نفر بازی قبلی باشد.
+  if (game?.status === 'lobby') await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
   const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
   if (state?.message_id) return refreshBattlePanel(env, chat);
   return renderBattlePanel(env, chat);
