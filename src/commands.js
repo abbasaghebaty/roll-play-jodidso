@@ -5,16 +5,16 @@ import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue, MAX_SPAM } from './game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
-import { say, isMaster, resolveId, dummyId, own } from './util.js';
+import { say, note, sayFlow, isMaster, resolveId, dummyId, own } from './util.js';
 import { logEvent } from './log.js';
 import * as T from './testmode.js';
 import * as R from './report.js';
-import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel } from './game/ui.js';
+import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel, cancelGame } from './game/ui.js';
 
 const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
 export async function handleUpdate(update, env) {
-  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend, join: async (ctx, key) => { ctx.args = [key]; return join(ctx); } });
+  if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend, cancel: async (ctx2) => { await cancelGame(ctx2.env, ctx2.chat); }, join: async (ctx, key) => { ctx.args = [key]; return join(ctx); } });
   const m = update.message;
   if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
@@ -67,7 +67,7 @@ async function passTurn(ctx) {
 async function resolveHits(ctx, target, defValue, label) {
   const { env, chat } = ctx;
   const rows = await all(env.DB, 'SELECT * FROM pending WHERE chat_id=? AND target_id=?', chat, target.user_id);
-  if (!rows.length) return say(ctx, 'حمله‌ای منتظر دفاع این بازیکن نیست.');
+  if (!rows.length) return note(ctx, 'حمله‌ای منتظر دفاع این بازیکن نیست.');
   const out = [];
   for (const r of rows) {
     // اول حذف می‌کنیم؛ اگر کس دیگری (مثلاً دوبار زدن /defend) زودتر حلش کرده بود، دمیج دوباره اعمال نمی‌شود
@@ -79,9 +79,9 @@ async function resolveHits(ctx, target, defValue, label) {
     out.push(`${label}: دفاع ${defValue} از ${r.dmg} دمیج ← ${final} دمیج خورد.\n❤️ جان ${mention(target)}: ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`);
     await logEvent(env, { chat, user: target.user_id, kind: 'event', text: 'defend', data: { attacker: r.attacker_id, tech: r.tech, dmg: r.dmg, defense: defValue, final, hp_after: res.hp, dead: res.dead } });
   }
-  if (!out.length) return say(ctx, 'این حمله قبلاً حل شده.');
+  if (!out.length) return note(ctx, 'این حمله قبلاً حل شده.');
   const tail = await afterResolve(ctx);
-  await say(ctx, out.join('\n') + tail);
+  await sayFlow(ctx, out.join('\n') + tail);
 }
 
 // ---------- دستورهای مستر ----------
@@ -92,8 +92,17 @@ async function newgame(ctx) {
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
-  await say(ctx, '🎮 بازی جدید ساخته شد. بازیکن‌ها با <code>/join کلید_کاراکتر</code> وارد شوند. لیست کاراکترها: /chars');
+  await sayFlow(ctx, ctx.private ? '🎮 بازی جدید ساخته شد. با <code>/join کلید_کاراکتر</code> وارد شوید.' : '🎮 بازی جدید ساخته شد! شخصیتت را از دکمه‌های پنل پین‌شده انتخاب کن.');
   await ensureBattlePanel(env, chat);
+}
+
+// /endgame — مستر بازی جاری را لغو می‌کند (دکمه‌ی 🛑 پنل هم همین کار را می‌کند)
+async function endgame(ctx) {
+  if (!isMaster(ctx)) return say(ctx, 'فقط مستر می‌تواند بازی را لغو کند.');
+  const ok = await cancelGame(ctx.env, ctx.chat);
+  if (!ok) return say(ctx, 'بازی فعالی برای لغو نیست.');
+  await logEvent(ctx.env, { chat: ctx.chat, user: ctx.uid, kind: 'event', text: 'cancel-game' });
+  await say(ctx, '🛑 بازی توسط مستر لغو شد. برای بازی جدید: /newgame');
 }
 
 async function team(ctx) {
@@ -115,7 +124,7 @@ async function begin(ctx) {
   const players = await alivePlayers(env, chat);
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
   await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
-  await say(ctx, `⚔️ بازی شروع شد!\n🎯 نوبت: ${mention(players[0])}\n\nحمله: <code>/attack کلید_تکنیک</code> (روی پیام هدف ریپلای کن)`);
+  await sayFlow(ctx, `⚔️ بازی شروع شد!\n🎯 نوبت: ${mention(players[0])}`);
   await ensureBattlePanel(env, chat);
 }
 
@@ -157,7 +166,7 @@ export async function nodefend(ctx) {
   let targetId = ctx.uid;
   if (isMaster(ctx)) targetId = resolveId(ctx, ctx.args[0]) || ctx.uid;
   const p = await getPlayer(ctx.env, ctx.chat, targetId);
-  if (!p) return say(ctx, 'بازیکن پیدا نشد.');
+  if (!p) return note(ctx, 'بازیکن پیدا نشد.');
   await resolveHits(ctx, p, 0, 'بدون دفاع');
 }
 
@@ -166,20 +175,20 @@ export async function nodefend(ctx) {
 async function join(ctx) {
   const { env, chat } = ctx;
   const game = await getGame(env, chat);
-  if (!game || game.status !== 'lobby') return say(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
+  if (!game || game.status !== 'lobby') return note(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
   const key = (ctx.args[0] || '').toLowerCase();
   const c = own(CHARACTERS, key);
-  if (!c || c.hidden) return say(ctx, 'کاراکتر پیدا نشد. لیست: /chars');
-  if (await getPlayer(env, chat, ctx.uid)) return say(ctx, 'قبلاً وارد شده‌ای.');
+  if (!c || c.hidden) return note(ctx, 'کاراکتر پیدا نشد. لیست: /chars');
+  if (await getPlayer(env, chat, ctx.uid)) return note(ctx, 'قبلاً وارد شده‌ای.');
   const taken = await first(env.DB, 'SELECT user_id FROM players WHERE chat_id=? AND char_key=?', chat, key);
-  if (taken) return say(ctx, 'این کاراکتر قبلاً انتخاب شده.');
+  if (taken) return note(ctx, 'این کاراکتر قبلاً انتخاب شده.');
   const cnt = await first(env.DB, 'SELECT COUNT(*) AS n FROM players WHERE chat_id=?', chat);
   await run(
     env.DB,
     'INSERT INTO players (chat_id, user_id, name, char_key, hp, max_hp, np, max_np, seat) VALUES (?,?,?,?,?,?,?,?,?)',
     chat, ctx.uid, ctx.uname, key, c.hp, c.hp, c.np, c.np, cnt.n
   );
-  await say(ctx, `✅ ${esc(ctx.uname)} شد ${esc(c.name)}\n❤️ ${c.hp}  🔮 ${c.np}`);
+  if (!ctx.interactive) await say(ctx, `✅ ${esc(ctx.uname)} شد ${esc(c.name)}\n❤️ ${c.hp}  🔮 ${c.np}`);
   await refreshBattlePanel(env, chat);
 }
 
@@ -221,17 +230,17 @@ export async function attack(ctx) {
   const { env, chat } = ctx;
   const uid = ctx.asId ?? ctx.uid; // در تست، /hit دامی را مهاجم می‌کند
   const game = await getGame(env, chat);
-  if (!game || game.status !== 'active') return say(ctx, ctx.private ? 'بازی فعال نیست. /test بزن.' : 'بازی فعال نیست.');
-  if (!ctx.private && game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  if (!game || game.status !== 'active') return note(ctx, ctx.private ? 'بازی فعال نیست. /test بزن.' : 'بازی فعال نیست.');
+  if (!ctx.private && game.turn_user !== uid) return note(ctx, 'نوبت تو نیست.');
   const me = await getPlayer(env, chat, uid);
-  if (!me || !me.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+  if (!me || !me.alive) return note(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
   const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
-  if (waiting.n > 0) return say(ctx, 'هنوز دفاع حمله‌ی قبلی تمام نشده.');
+  if (waiting.n > 0) return note(ctx, 'هنوز دفاع حمله‌ی قبلی تمام نشده.');
 
   const key = (ctx.args[0] || '').toLowerCase();
   const tech = own(TECHNIQUES, key);
-  if (!tech || (!ctx.private && !CHARACTERS[me.char_key].techs.includes(key))) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
-  if (me.last_tech === key && me.spam >= MAX_SPAM) return say(ctx, `❌ ضد اسپم: ${MAX_SPAM} بار پشت هم زدی، تکنیک دیگری بزن.`);
+  if (!tech || (!ctx.private && !CHARACTERS[me.char_key].techs.includes(key))) return note(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
+  if (me.last_tech === key && me.spam >= MAX_SPAM) return note(ctx, `❌ ضد اسپم: ${MAX_SPAM} بار پشت هم زدی، تکنیک دیگری بزن.`);
 
   // هدف‌ها
   let targets = [];
@@ -240,20 +249,20 @@ export async function attack(ctx) {
     targets = everyone.filter((p) => p.user_id !== uid && (!me.team || p.team !== me.team));
   } else {
     const tid = resolveId(ctx, ctx.args[1]);
-    if (!tid) return say(ctx, ctx.private ? 'هدف را بنویس: me یا d1 یا d2. مثال: <code>/attack blackflash d1</code>' : 'روی پیام هدف ریپلای کن.');
+    if (!tid) return note(ctx, ctx.private ? 'هدف را بنویس: me یا d1 یا d2. مثال: <code>/attack blackflash d1</code>' : 'روی پیام هدف ریپلای کن.');
     const t = await getPlayer(env, chat, tid);
-    if (!t || !t.alive || t.user_id === uid) return say(ctx, 'هدف نامعتبر است.');
-    if (me.team && t.team === me.team) return say(ctx, 'هم‌تیمی را نمی‌شود زد.');
+    if (!t || !t.alive || t.user_id === uid) return note(ctx, 'هدف نامعتبر است.');
+    if (me.team && t.team === me.team) return note(ctx, 'هم‌تیمی را نمی‌شود زد.');
     targets = [t];
   }
-  if (!targets.length) return say(ctx, 'هدفی نیست.');
+  if (!targets.length) return note(ctx, 'هدفی نیست.');
 
   // تاس
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
   if (roll.result <= 0) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-neutral', data: { tech: key, roll } });
-    return say(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
+    return sayFlow(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
   }
 
   const dmg = techDamage(tech, roll.result);
@@ -261,12 +270,12 @@ export async function attack(ctx) {
   const cost = tech.free ? 0 : npCost(dmg, tech.kind);
   if (me.np < cost) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
-    return say(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
+    return sayFlow(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
 
   const spam = me.last_tech === key ? me.spam + 1 : 1;
   const paid = await run(env.DB, 'UPDATE players SET np=np-?, last_tech=?, spam=? WHERE chat_id=? AND user_id=? AND np>=?', cost, key, spam, chat, uid, cost);
-  if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
+  if (paid?.meta?.changes === 0) return note(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
   await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack', data: { tech: key, kind: tech.kind, roll, dmg, cost, np_before: me.np, targets: targets.map((t) => t.user_id) } });
 
   let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
@@ -276,24 +285,24 @@ export async function attack(ctx) {
       text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (غیرقابل‌دفاع). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
     }
     text += await afterResolve(ctx);
-    return say(ctx, text);
+    return sayFlow(ctx, text);
   }
 
   for (const t of targets) {
     await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
-  text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}\n<code>/defend dodge</code> یا /nodefend`;
+  text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}` + (ctx.private ? '\n<code>/defend dodge</code> یا /nodefend' : '\nاز دکمه‌های پنل پین‌شده دفاع کن.');
   await refreshBattlePanel(env, chat);
-  await say(ctx, text);
+  await sayFlow(ctx, text);
 }
 
 export async function defend(ctx) {
   const key = (ctx.args[0] || '').toLowerCase();
   const def = own(DEFENSES, key);
-  if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');
+  if (!def) return note(ctx, 'دفاع نامعتبر. لیست: /defenses');
   const who = ctx.private && ctx.args[1] ? resolveId(ctx, ctx.args[1]) : ctx.uid;
   const me = await getPlayer(ctx.env, ctx.chat, who);
-  if (!me || !me.alive) return say(ctx, 'بازیکن در بازی نیست.');
+  if (!me || !me.alive) return note(ctx, 'بازیکن در بازی نیست.');
   const roll = d10();
   const value = defenseValue(def, roll);
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll})`);
@@ -321,7 +330,7 @@ async function help(ctx) {
       '/nodefend — بدون دفاع',
       '',
       '<b>مستر</b>',
-      '/newgame /begin',
+      '/newgame /begin /endgame (لغو بازی)',
       '/team نام — (ریپلای)',
       '/buff hp|np عدد — (ریپلای)',
       '/effect poison|drain|clear — (ریپلای)',
@@ -347,6 +356,8 @@ const HANDLERS = {
   start: help,
   help,
   newgame,
+  endgame,
+  cancelgame: endgame,
   join,
   chars,
   team,
