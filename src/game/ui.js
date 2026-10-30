@@ -4,6 +4,8 @@ import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
 import { getGame, alivePlayers } from './engine.js';
 import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback } from '../telegram.js';
+import { sendPrompt, dropMessage, purgeAll } from './cleanup.js';
+import { isMaster } from '../util.js';
 
 const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}`;
 
@@ -13,7 +15,7 @@ async function sendTurnPrompt(env, chat, player) {
   const rows = [[{ text: '⚔️ حمله', callback_data: 'rp:go' }]];
   if (techs.length) rows.push([{ text: '📜 تکنیک‌های من', callback_data: 'rp:go' }]);
   rows.push([{ text: '📋 وضعیت بازیکن‌ها', callback_data: 'rp:status' }]);
-  await sendKeyboard(env, chat, text, { inline_keyboard: rows });
+  await sendPrompt(env, chat, text, { inline_keyboard: rows });
 }
 
 export async function renderBattlePanel(env, chat, messageId = null) {
@@ -23,7 +25,7 @@ export async function renderBattlePanel(env, chat, messageId = null) {
   const alive = players.filter(p => p.alive);
   const current = players.find(p => p.user_id === game.turn_user);
   const pending = await all(env.DB, 'SELECT * FROM pending WHERE chat_id=? ORDER BY id', chat);
-  let text = `⚔️ <b>رول‌پلی انیمه</b>\nوضعیت: <b>${esc(game.status === 'lobby' ? 'لابی ثبت‌نام' : game.status === 'active' ? 'در حال مبارزه' : 'پایان بازی')}</b>\n\n`;
+  let text = `⚔️ <b>رول‌پلی انیمه</b>\nوضعیت: <b>${esc(game.status === 'lobby' ? 'لابی ثبت‌نام' : game.status === 'active' ? 'در حال مبارزه' : game.status === 'cancelled' ? 'لغو شد 🛑' : 'پایان بازی')}</b>\n\n`;
   text += players.map(p => `${p.user_id === game.turn_user && game.status === 'active' ? '🎯 ' : ''}${p.alive ? '🟢' : '💀'} ${label(p)}`).join('\n') || 'هنوز بازیکنی ثبت‌نام نکرده.';
   if (game.status === 'lobby') text += '\n\nبرای ورود، شخصیتت را از دکمه‌ها انتخاب کن.';
   if (game.status === 'active' && current) text += `\n\n🎯 نوبت: ${mention(current)}`;
@@ -33,6 +35,7 @@ export async function renderBattlePanel(env, chat, messageId = null) {
     return `${target ? mention(target) : 'هدف'}: ${p.dmg} دمیج از ${attacker ? mention(attacker) : 'حمله'}`;
   }).join('\n');
   if (game.status === 'ended') text += '\n\n🏆 بازی به پایان رسید.';
+  if (game.status === 'cancelled') text += '\n\n🛑 بازی توسط مستر لغو شد.';
 
   const rows = [];
   if (game.status === 'lobby') {
@@ -53,6 +56,7 @@ export async function renderBattlePanel(env, chat, messageId = null) {
     }
   }
 
+  if (game.status === 'lobby' || game.status === 'active') rows.push([{ text: '🛑 لغو بازی (مستر)', callback_data: 'rp:x' }]);
   const markup = { inline_keyboard: rows.slice(0, 90) };
   if (messageId) {
     await editMessage(env, chat, messageId, text, markup);
@@ -101,6 +105,30 @@ export async function refreshBattlePanel(env, chat) {
   }
 }
 
+// لغو بازی توسط مستر: پنل به «لغو شد» تبدیل می‌شود و پیام‌های قدیمی پاک می‌شوند
+export async function cancelGame(env, chat) {
+  const game = await getGame(env, chat);
+  if (!game || game.status === 'ended' || game.status === 'cancelled') return false;
+  await run(env.DB, "UPDATE games SET status='cancelled', turn_user=0 WHERE chat_id=?", chat);
+  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
+  try { await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat); } catch (e) { console.error(e); }
+  await purgeAll(env, chat);
+  await refreshBattlePanel(env, chat);
+  return true;
+}
+
+// بعد از حمله: اگر نوبت تمام شد، پیام منوی همان بازیکن حذف شود
+async function dropIfDone(env, chat, messageId, uid) {
+  const g = await getGame(env, chat);
+  const w = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+  if (!g || g.status !== 'active' || g.turn_user !== uid || w?.n > 0) await dropMessage(env, chat, messageId);
+}
+
+// پاپ‌آپ فقط برای همان کسی که کلیک کرده؛ هیچ پیامی در گروه ارسال یا ویرایش نمی‌شود
+function privateAlert(env, query, state) {
+  return async (text) => { state.answered = true; return answerCallback(env, query.id, String(text).slice(0, 190), true); };
+}
+
 async function showTechniqueMenu(query, env, chat, player) {
   const keys = CHARACTERS[player.char_key]?.techs || [];
   const rows = keys.filter(key => TECHNIQUES[key]).map(key => [{
@@ -129,11 +157,14 @@ export async function handleBattleCallback(query, env, handlers) {
     args: [], rawArgs: '', msgId: m.message_id, reply: null, replyMsg: null,
     anonAdmin: false, interactive: true,
   };
+  const st = { answered: false };
+  ctx.alert = privateAlert(env, query, st);
+  const finish = async (text) => { if (!st.answered) await answerCallback(env, query.id, text); };
 
   if (action === 'j') {
     if (game.status !== 'lobby') return answerCallback(env, query.id, 'ثبت‌نام بسته شده؛ بازی شروع شده است.');
-    await answerCallback(env, query.id, 'در حال ثبت‌نام…');
     await handlers.join(ctx, key);
+    await finish('ثبت‌نام شدی ✅');
     await refreshBattlePanel(env, chat);
     return;
   }
@@ -148,12 +179,26 @@ export async function handleBattleCallback(query, env, handlers) {
     return;
   }
 
+  if (action === 'x') {
+    if (!isMaster(ctx)) return answerCallback(env, query.id, 'فقط مستر می‌تواند بازی را لغو کند.', true);
+    const ok = await handlers.cancel(ctx);
+    return answerCallback(env, query.id, 'بازی لغو شد 🛑');
+  }
+
   if (action === 'status') {
-    const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? ORDER BY seat', chat);
-    const lines = players.map(p => `${p.alive ? '🟢' : '💀'} ${label(p)}`).join('\n') || 'بازیکنی نیست.';
-    await answerCallback(env, query.id, 'وضعیت بازیکن‌ها در پنل ثابت نمایش داده می‌شود.');
-    await sendKeyboard(env, chat, `📋 <b>وضعیت بازیکن‌ها</b>\n\n${lines}`, { inline_keyboard: [[{ text: '↩️ برگشت به نوبت', callback_data: 'rp:back' }]] });
-    return;
+    // فقط برای کلیک‌کننده: خودش اول، بعد بقیه بر اساس جان؛ حد تلگرام برای پاپ‌آپ ۲۰۰ کاراکتر است
+    const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? ORDER BY hp DESC', chat);
+    const mine = players.filter(p => p.user_id === uid);
+    const rest = players.filter(p => p.user_id !== uid);
+    const lines = [];
+    let len = 0;
+    for (const p of [...mine, ...rest]) {
+      const line = `${p.alive ? '🟢' : '💀'} ${p.user_id === uid ? '(تو) ' : ''}${CHARACTERS[p.char_key]?.name || p.char_key} ❤️${p.hp} 🔮${p.np}`;
+      if (len + line.length + 1 > 190) break;
+      lines.push(line);
+      len += line.length + 1;
+    }
+    return answerCallback(env, query.id, lines.join('\n') || 'بازیکنی نیست.', true);
   }
 
   if (action === 'go' || action === 'back') {
@@ -170,9 +215,12 @@ export async function handleBattleCallback(query, env, handlers) {
     const tech = TECHNIQUES[key];
     if (!player || !tech || !CHARACTERS[player.char_key]?.techs?.includes(key)) return answerCallback(env, query.id, 'این تکنیک برای تو قابل استفاده نیست.', true);
     if (tech.kind === 'aoe' || tech.kind === 'undefendable') {
-      await answerCallback(env, query.id, 'در حال اجرای حمله…');
       ctx.args = [key];
-      return handlers.attack(ctx);
+      await handlers.attack(ctx);
+      await finish('⚔️ انجام شد');
+      await dropIfDone(env, chat, m.message_id, uid);
+      await refreshBattlePanel(env, chat);
+      return;
     }
     const targets = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
     const allowed = targets.filter(p => p.user_id !== uid && (!player.team || p.team !== player.team));
@@ -190,8 +238,9 @@ export async function handleBattleCallback(query, env, handlers) {
     if (!tech) return answerCallback(env, query.id, 'تکنیک پیدا نشد.', true);
     ctx.args = [key, targetId ? String(targetId) : ''];
     if (targetId) ctx.reply = { id: targetId };
-    await answerCallback(env, query.id, 'در حال اجرای حمله…');
     await handlers.attack(ctx);
+    await finish('⚔️ انجام شد');
+    await dropIfDone(env, chat, m.message_id, uid);
     await refreshBattlePanel(env, chat);
     return;
   }
@@ -203,12 +252,11 @@ export async function handleBattleCallback(query, env, handlers) {
     if (actualTargetId !== uid || !rows.length) return answerCallback(env, query.id, 'این دفاع برای تو نیست یا حمله قبلاً حل شده است.', true);
     if (action === 'd') {
       ctx.args = [defKey];
-      await answerCallback(env, query.id, 'در حال محاسبه دفاع…');
       await handlers.defend(ctx);
     } else {
-      await answerCallback(env, query.id, 'ثبت بدون دفاع…');
       await handlers.nodefend(ctx);
     }
+    await finish('🛡 ثبت شد');
     await refreshBattlePanel(env, chat);
     return;
   }
