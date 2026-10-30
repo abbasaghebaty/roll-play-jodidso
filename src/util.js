@@ -1,6 +1,14 @@
 import { send } from './telegram.js';
+import { sendResult } from './game/cleanup.js';
 
 export const say = (ctx, text) => send(ctx.env, ctx.chat, text, ctx.msgId);
+
+// خطا/اطلاع کوتاه: اگر از دکمه آمده باشد فقط برای همان کسی که کلیک کرده پاپ‌آپ می‌شود (نه پیام گروه)
+export const note = (ctx, text) => (ctx.alert ? ctx.alert(text) : say(ctx, text));
+
+// نتیجه‌ی بازی: در گروه پیام قبلیِ نتیجه حذف می‌شود تا گروه شلوغ نشود
+export const sayFlow = (ctx, text) =>
+  ctx.private ? say(ctx, text) : sendResult(ctx.env, ctx.chat, text, ctx.interactive ? undefined : ctx.msgId);
 
 const idList = (s) => (s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
