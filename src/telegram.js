@@ -97,3 +97,9 @@ export async function answerCallback(env, callbackId, text, showAlert = false) {
   if (!response.ok || !result?.ok) console.error('Telegram answerCallbackQuery failed:', result?.description || response.status);
   return result;
 }
+
+export async function deleteMessage(env, chatId, messageId) {
+  if (!chatId || !messageId) return false;
+  const { response, result } = await callTelegram(env, 'deleteMessage', { chat_id: chatId, message_id: messageId });
+  return !!(response.ok && result?.ok);
+}
