@@ -2,7 +2,8 @@
 import { handleUpdate } from './commands.js';
 import { logEvent } from './log.js';
 import { run } from './db.js';
-import { send } from './telegram.js';
+import { send, answerCallback } from './telegram.js';
+import { ensureSchema } from './schema.js';
 
 // هر آپدیت تلگرام فقط یک‌بار پردازش می‌شود.
 // اگر جدول processed_updates وجود نداشته باشد، بدون این محافظ ادامه می‌دهد.
@@ -58,6 +59,8 @@ export default {
       return new Response('invalid JSON', { status: 400 });
     }
 
+    await ensureSchema(env);
+
     // جلوگیری از پردازش دوباره یک آپدیت
     if (!(await firstTime(env, update.update_id))) {
       return new Response('duplicate');
@@ -68,21 +71,32 @@ export default {
     } catch (e) {
       console.error('Failed to handle Telegram update:', e);
 
-      const m = update.message;
+      const cq = update.callback_query;
+      const m = update.message || cq?.message;
 
       let logId = null;
 
       try {
         logId = await logEvent(env, {
           chat: m?.chat?.id ?? 0,
-          user: m?.from?.id ?? 0,
+          user: (cq?.from || update.message?.from)?.id ?? 0,
           kind: 'error',
           msgId: m?.message_id ?? null,
           text: String(e?.stack || e?.message || e),
-          data: { command: m?.text ?? null },
+          data: { command: update.message?.text ?? null, callback: cq?.data ?? null },
         });
       } catch (logError) {
         console.error('Could not save error log:', logError);
+      }
+
+      // خطا در دکمه‌ها: به‌جای سکوت، به کاربر نشان بده
+      if (cq) {
+        try {
+          await answerCallback(env, cq.id, `⚠️ خطای داخلی${logId ? ` (لاگ #${logId})` : ''}: ${String(e?.message || e).slice(0, 120)}`, true);
+        } catch (e3) {
+          console.error('Could not answer callback after error:', e3);
+        }
+        return new Response('ok');
       }
 
       // اگر خود دستور گزارش باگ شکست خورد، پیام درخواست /bug نفرست؛
