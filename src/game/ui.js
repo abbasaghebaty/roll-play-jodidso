@@ -68,29 +68,36 @@ export async function renderBattlePanel(env, chat, messageId = null) {
 export async function ensureBattlePanel(env, chat) {
   const game = await getGame(env, chat);
   // هر بازی جدید باید اعلان نوبت را از نو فعال کند، حتی اگر نفر اول همان نفر بازی قبلی باشد.
-  if (game?.status === 'lobby') await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
+  if (game?.status === 'lobby') {
+    try { await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat); }
+    catch (e) { console.error('battle_turn_ui reset failed:', e); }
+  }
   const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
   if (state?.message_id) return refreshBattlePanel(env, chat);
   return renderBattlePanel(env, chat);
 }
 
 export async function refreshBattlePanel(env, chat) {
-  const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
-  if (state?.message_id) {
-    try { await renderBattlePanel(env, chat, state.message_id); }
-    catch (e) { console.error('Could not refresh battle panel:', e); }
-  }
-  const game = await getGame(env, chat);
-  if (!game || game.status !== 'active' || !game.turn_user) return;
-  const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, game.turn_user);
-  if (!player) return;
-  const stateTurn = await first(env.DB, 'SELECT turn_user FROM battle_turn_ui WHERE chat_id=?', chat);
-  if (stateTurn?.turn_user === player.user_id) return;
+  // رفرش پنل هرگز نباید حمله/دفاع را خراب کند؛ هر خطایی فقط لاگ می‌شود.
   try {
+    const state = await first(env.DB, 'SELECT message_id FROM battle_ui WHERE chat_id=?', chat);
+    if (state?.message_id) {
+      try { await renderBattlePanel(env, chat, state.message_id); }
+      catch (e) { console.error('Could not refresh battle panel:', e); }
+    }
+    const game = await getGame(env, chat);
+    if (!game || game.status !== 'active' || !game.turn_user) return;
+    const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, game.turn_user);
+    if (!player) return;
+    // اگر هنوز حمله‌ای منتظر دفاع است، نوبت جدید اعلام نمی‌شود
+    const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+    if (waiting?.n > 0) return;
+    const stateTurn = await first(env.DB, 'SELECT turn_user FROM battle_turn_ui WHERE chat_id=?', chat);
+    if (stateTurn?.turn_user === player.user_id) return;
     await sendTurnPrompt(env, chat, player);
     await run(env.DB, 'INSERT OR REPLACE INTO battle_turn_ui (chat_id, turn_user) VALUES (?,?)', chat, player.user_id);
   } catch (e) {
-    console.error('Could not send turn prompt:', e);
+    console.error('refreshBattlePanel failed:', e);
   }
 }
 
