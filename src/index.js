@@ -1,37 +1,31 @@
-
+// ============================================================
+// src/index.js
+// نقطه‌ی ورود ورکر: وبهوک تلگرام را می‌گیرد، اعتبارسنجی می‌کند،
+// آپدیت تکراری را رد می‌کند و به handleUpdate می‌دهد.
+// اگر خطایی رخ دهد در جدول logs ثبت و به چت اطلاع داده می‌شود.
+// ============================================================
 import { handleUpdate } from './commands.js';
-import { logEvent } from './log.js';
 import { run } from './db.js';
+import { logEvent } from './log.js';
 import { send, answerCallback } from './telegram.js';
 
-// هر آپدیت تلگرام فقط یک‌بار پردازش می‌شود.
-// اگر جدول processed_updates وجود نداشته باشد، بدون این محافظ ادامه می‌دهد.
+// --- جلوگیری از پردازش دوباره‌ی یک آپدیت (تلگرام گاهی دوباره می‌فرستد) ---
 async function firstTime(env, id) {
   if (!Number.isInteger(id)) return true;
-
   try {
     const r = await run(
       env.DB,
       'INSERT OR IGNORE INTO processed_updates (update_id) VALUES (?)',
       id
     );
-
     if (r?.meta?.changes === 0) return false;
-
+    // هر چند وقت یک‌بار آپدیت‌های قدیمی پاک می‌شوند
     if (id % 20 === 0) {
-      await run(
-        env.DB,
-        'DELETE FROM processed_updates WHERE update_id < ?',
-        id - 2000
-      );
+      await run(env.DB, 'DELETE FROM processed_updates WHERE update_id < ?', id - 2000);
     }
   } catch (e) {
-    console.error(
-      'update dedupe unavailable (did you run schema.sql?):',
-      e
-    );
+    console.error('update dedupe unavailable (did you run schema.sql?):', e);
   }
-
   return true;
 }
 
@@ -40,31 +34,21 @@ export default {
     if (req.method !== 'POST') {
       return new Response('anime-rpg-bot is running');
     }
-
-    // بررسی تنظیمات ضروری
     if (!env.BOT_TOKEN || !env.DB) {
       console.error('Missing BOT_TOKEN or D1 binding DB');
-      return new Response('server configuration error', {
-        status: 500,
-      });
+      return new Response('server configuration error', { status: 500 });
     }
-
-    // اگر WEBHOOK_SECRET تنظیم شده باشد، فقط درخواست‌هایی که هدر مخفی تلگرام را دارند قبول می‌شوند.
-    // (باید همین مقدار را هنگام setWebhook در secret_token بدهی.)
     if (env.WEBHOOK_SECRET && req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.WEBHOOK_SECRET) {
       return new Response('forbidden', { status: 403 });
     }
 
-    // دریافت آپدیت تلگرام
     let update;
-
     try {
       update = await req.json();
     } catch {
       return new Response('invalid JSON', { status: 400 });
     }
 
-    // جلوگیری از پردازش دوباره یک آپدیت
     if (!(await firstTime(env, update.update_id))) {
       return new Response('duplicate');
     }
@@ -78,8 +62,8 @@ export default {
       const m = update.message || cb?.message;
       const fromId = update.message?.from?.id ?? cb?.from?.id ?? 0;
 
+      // ثبت خطا در لاگ
       let logId = null;
-
       try {
         logId = await logEvent(env, {
           chat: m?.chat?.id ?? 0,
@@ -93,11 +77,15 @@ export default {
         console.error('Could not save error log:', logError);
       }
 
-      // اگر خود دستور گزارش باگ شکست خورد، پیام درخواست /bug نفرست؛
-      // وگرنه کاربر با ریپلای روی خطا دوباره /bug می‌زند و حلقه ساخته می‌شود.
-      const command = String(update.message?.text || '').trim().split(/\\s+/, 1)[0].split('@')[0].toLowerCase();
+      // تشخیص اینکه خطا از خود دستور /bug بوده یا نه
+      const command = String(update.message?.text || '')
+        .trim()
+        .split(/\s+/, 1)[0]
+        .split('@')[0]
+        .toLowerCase();
       const isBugCommand = ['/bug', '/report', '/باگ', '/مشکل'].includes(command);
 
+      // اگر از دکمه بود، پاپ‌آپ خطا نشان بده
       if (cb?.id) {
         try {
           await answerCallback(env, cb.id, '⚠️ خطایی رخ داد. دوباره امتحان کن.');
@@ -106,15 +94,21 @@ export default {
         }
       }
 
+      // اطلاع به چت
       if (m?.chat?.id) {
         try {
           if (isBugCommand) {
-            await send(env, m.chat.id, '⚠️ ثبت گزارش با خطا مواجه شد؛ خطا برای بررسی در لاگ سرور ثبت شده است. لطفاً فعلاً گزارش را دوباره ارسال نکن.', m.message_id);
+            await send(
+              env,
+              m.chat.id,
+              '⚠️ ثبت گزارش با خطا مواجه شد؛ خطا برای بررسی در لاگ سرور ثبت شده است. لطفاً فعلاً گزارش را دوباره ارسال نکن.',
+              m.message_id
+            );
           } else {
             await send(
               env,
               m.chat.id,
-              `⚠️ خطای داخلی ربات${logId ? ` (لاگ #${logId})` : ''}.\\nروی همین پیام ریپلای بزن و با <code>/bug</code> توضیح بده چه کاری کرده بودی.`,
+              `⚠️ خطای داخلی ربات${logId ? ` (لاگ #${logId})` : ''}.\nروی همین پیام ریپلای بزن و با <code>/bug</code> توضیح بده چه کاری کرده بودی.`,
               m.message_id
             );
           }
