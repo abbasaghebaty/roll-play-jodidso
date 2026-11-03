@@ -10,15 +10,37 @@ export function mention(p) {
   return `<a href="tg://user?id=${p.user_id}">${esc(p.name)}</a>`;
 }
 
-async function callTelegram(env, method, body) {
+const TG_LIMIT = 4096;
+
+// متن طولانی‌تر از سقف تلگرام باعث خطا می‌شود؛ اینجا کوتاه می‌کنیم (ترجیحاً سر خط)
+function fit(text) {
+  const s = String(text ?? '');
+  if (s.length <= TG_LIMIT) return s;
+  const cutAt = s.lastIndexOf('\n', TG_LIMIT - 20);
+  return s.slice(0, cutAt > 2000 ? cutAt : TG_LIMIT - 20) + '\n…';
+}
+
+async function callTelegram(env, method, body, retried = false) {
   const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
     method: 'POST',
     ...(body instanceof FormData ? { body } : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
   });
   let result;
   try { result = await response.json(); } catch { /* handled below */ }
+
+  // محدودیت نرخ تلگرام: یک‌بار با تأخیر کوتاه دوباره تلاش می‌کنیم
+  if (response.status === 429 && !retried && !(body instanceof FormData)) {
+    const wait = Number(result?.parameters?.retry_after);
+    if (wait > 0 && wait <= 3) {
+      await new Promise((r) => setTimeout(r, wait * 1000 + 100));
+      return callTelegram(env, method, body, true);
+    }
+  }
   return { response, result };
 }
+
+const isParseError = (response, result) =>
+  (!response.ok || !result?.ok) && /parse entities/i.test(result?.description || '');
 
 export async function send(env, chatId, text, replyTo) {
   if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
@@ -27,12 +49,12 @@ export async function send(env, chatId, text, replyTo) {
     ...(replyTo == null ? {} : { reply_to_message_id: replyTo }),
     allow_sending_without_reply: true,
   };
-  let { response, result } = await callTelegram(env, 'sendMessage', { ...base, text, parse_mode: 'HTML' });
+  let { response, result } = await callTelegram(env, 'sendMessage', { ...base, text: fit(text), parse_mode: 'HTML' });
 
   // اگر HTML خراب بود، همان متن را ساده می‌فرستیم تا پیام گم نشود
-  if ((!response.ok || !result?.ok) && /parse entities/i.test(result?.description || '')) {
+  if (isParseError(response, result)) {
     console.error('HTML parse failed, resending as plain text:', result?.description);
-    ({ response, result } = await callTelegram(env, 'sendMessage', { ...base, text: plain(text) }));
+    ({ response, result } = await callTelegram(env, 'sendMessage', { ...base, text: fit(plain(text)) }));
   }
   if (!response.ok || !result?.ok) {
     throw new Error(`Telegram sendMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
@@ -61,22 +83,32 @@ export async function sendDocument(env, chatId, filename, content, caption = '',
 }
 
 
-export async function sendKeyboard(env, chatId, text, replyMarkup) {
+export async function sendKeyboard(env, chatId, text, replyMarkup, replyTo) {
   if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
-  const { response, result } = await callTelegram(env, 'sendMessage', {
-    chat_id: chatId, text, parse_mode: 'HTML', reply_markup: replyMarkup,
-    disable_web_page_preview: true,
-  });
+  const base = {
+    chat_id: chatId, reply_markup: replyMarkup, disable_web_page_preview: true,
+    ...(replyTo == null ? {} : { reply_to_message_id: replyTo, allow_sending_without_reply: true }),
+  };
+  let { response, result } = await callTelegram(env, 'sendMessage', { ...base, text: fit(text), parse_mode: 'HTML' });
+  if (isParseError(response, result)) {
+    console.error('HTML parse failed (keyboard), resending as plain text:', result?.description);
+    ({ response, result } = await callTelegram(env, 'sendMessage', { ...base, text: fit(plain(text)) }));
+  }
   if (!response.ok || !result?.ok) throw new Error(`Telegram sendMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
   await logEvent(env, { chat: chatId, kind: 'out', msgId: result.result?.message_id, text: plain(text) });
   return result;
 }
 
 export async function editMessage(env, chatId, messageId, text, replyMarkup) {
-  const { response, result } = await callTelegram(env, 'editMessageText', {
-    chat_id: chatId, message_id: messageId, text, parse_mode: 'HTML',
+  const base = {
+    chat_id: chatId, message_id: messageId,
     reply_markup: replyMarkup, disable_web_page_preview: true,
-  });
+  };
+  let { response, result } = await callTelegram(env, 'editMessageText', { ...base, text: fit(text), parse_mode: 'HTML' });
+  if (isParseError(response, result)) {
+    console.error('HTML parse failed (edit), resending as plain text:', result?.description);
+    ({ response, result } = await callTelegram(env, 'editMessageText', { ...base, text: fit(plain(text)) }));
+  }
   if ((!response.ok || !result?.ok) && /message is not modified/i.test(result?.description || '')) return result;
   if (!response.ok || !result?.ok) throw new Error(`Telegram editMessageText failed (${response.status}): ${result?.description || 'unknown error'}`);
   return result;
@@ -96,10 +128,4 @@ export async function answerCallback(env, callbackId, text, showAlert = false) {
   });
   if (!response.ok || !result?.ok) console.error('Telegram answerCallbackQuery failed:', result?.description || response.status);
   return result;
-}
-
-export async function deleteMessage(env, chatId, messageId) {
-  if (!chatId || !messageId) return false;
-  const { response, result } = await callTelegram(env, 'deleteMessage', { chat_id: chatId, message_id: messageId });
-  return !!(response.ok && result?.ok);
 }
