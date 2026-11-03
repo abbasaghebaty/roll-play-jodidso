@@ -3,7 +3,6 @@ import { handleUpdate } from './commands.js';
 import { logEvent } from './log.js';
 import { run } from './db.js';
 import { send, answerCallback } from './telegram.js';
-import { ensureSchema } from './schema.js';
 
 // هر آپدیت تلگرام فقط یک‌بار پردازش می‌شود.
 // اگر جدول processed_updates وجود نداشته باشد، بدون این محافظ ادامه می‌دهد.
@@ -50,6 +49,12 @@ export default {
       });
     }
 
+    // اگر WEBHOOK_SECRET تنظیم شده باشد، فقط درخواست‌هایی که هدر مخفی تلگرام را دارند قبول می‌شوند.
+    // (باید همین مقدار را هنگام setWebhook در secret_token بدهی.)
+    if (env.WEBHOOK_SECRET && req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.WEBHOOK_SECRET) {
+      return new Response('forbidden', { status: 403 });
+    }
+
     // دریافت آپدیت تلگرام
     let update;
 
@@ -58,8 +63,6 @@ export default {
     } catch {
       return new Response('invalid JSON', { status: 400 });
     }
-
-    await ensureSchema(env);
 
     // جلوگیری از پردازش دوباره یک آپدیت
     if (!(await firstTime(env, update.update_id))) {
@@ -71,38 +74,37 @@ export default {
     } catch (e) {
       console.error('Failed to handle Telegram update:', e);
 
-      const cq = update.callback_query;
-      const m = update.message || cq?.message;
+      const cb = update.callback_query;
+      const m = update.message || cb?.message;
+      const fromId = update.message?.from?.id ?? cb?.from?.id ?? 0;
 
       let logId = null;
 
       try {
         logId = await logEvent(env, {
           chat: m?.chat?.id ?? 0,
-          user: (cq?.from || update.message?.from)?.id ?? 0,
+          user: fromId,
           kind: 'error',
           msgId: m?.message_id ?? null,
           text: String(e?.stack || e?.message || e),
-          data: { command: update.message?.text ?? null, callback: cq?.data ?? null },
+          data: { command: update.message?.text ?? null, callback: cb?.data ?? null },
         });
       } catch (logError) {
         console.error('Could not save error log:', logError);
       }
 
-      // خطا در دکمه‌ها: به‌جای سکوت، به کاربر نشان بده
-      if (cq) {
+      // اگر خود دستور گزارش باگ شکست خورد، پیام درخواست /bug نفرست؛
+      // وگرنه کاربر با ریپلای روی خطا دوباره /bug می‌زند و حلقه ساخته می‌شود.
+      const command = String(update.message?.text || '').trim().split(/\\s+/, 1)[0].split('@')[0].toLowerCase();
+      const isBugCommand = ['/bug', '/report', '/باگ', '/مشکل'].includes(command);
+
+      if (cb?.id) {
         try {
-          await answerCallback(env, cq.id, `⚠️ خطای داخلی${logId ? ` (لاگ #${logId})` : ''}: ${String(e?.message || e).slice(0, 120)}`, true);
+          await answerCallback(env, cb.id, '⚠️ خطایی رخ داد. دوباره امتحان کن.');
         } catch (e3) {
           console.error('Could not answer callback after error:', e3);
         }
-        return new Response('ok');
       }
-
-      // اگر خود دستور گزارش باگ شکست خورد، پیام درخواست /bug نفرست؛
-      // وگرنه کاربر با ریپلای روی خطا دوباره /bug می‌زند و حلقه ساخته می‌شود.
-      const command = String(m?.text || '').trim().split(/\\s+/, 1)[0].split('@')[0].toLowerCase();
-      const isBugCommand = ['/bug', '/report', '/باگ', '/مشکل'].includes(command);
 
       if (m?.chat?.id) {
         try {
