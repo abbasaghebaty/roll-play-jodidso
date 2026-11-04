@@ -1,4 +1,4 @@
-import { send, mention, esc } from './telegram.js';
+import { send, mention, esc, deleteMessage } from './telegram.js';
 import { clearResults } from './game/cleanup.js';
 import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
@@ -16,6 +16,18 @@ const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام بر�
 export async function handleUpdate(update, env) {
   if (update.callback_query) return handleBattleCallback(update.callback_query, env, { attack, defend, nodefend, isMaster, join: async (ctx, key) => { ctx.args = [key]; return join(ctx); } });
   const m = update.message;
+
+  // تلگرام پس از پین‌کردن پیام، یک پیام سرویس با pinned_message می‌فرستد.
+  // اگر پین را خود همین ربات انجام داده باشد، پیام سرویس را حذف می‌کنیم.
+  if (m?.pinned_message && m.from?.is_bot) {
+    const sender = String(m.from.username || '').replace(/^@/, '').toLowerCase();
+    const configuredBot = String(env.BOT_USERNAME || '').replace(/^@/, '').toLowerCase();
+    if (!configuredBot || sender === configuredBot) {
+      await deleteMessage(env, m.chat.id, m.message_id);
+    }
+    return;
+  }
+
   if (!m || !m.from || typeof m.text !== 'string' || !m.text.startsWith('/')) return;
   const parts = m.text.trim().split(/\s+/);
   const [cmdName, cmdTarget] = parts[0].slice(1).split('@');
@@ -66,6 +78,11 @@ async function afterResolve(ctx) {
   }
 
   const next = await advanceTurn(env, chat);
+
+  // پس از پایان دفاع، اعلان نوبت بعدی باید حتماً دوباره ساخته شود؛
+  // این کار وضعیت کهنه‌ی battle_turn_ui را هم پاک می‌کند.
+  await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
+
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
