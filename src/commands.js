@@ -421,8 +421,31 @@ export async function attack(ctx) {
   }
 
   if (roll.result < 0) {
-    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-failed', data: { tech: key, roll } });
-    return sayThenRefresh(ctx, `${head}\n❌ ${roll.label}؛ حمله ناموفق بود و دمیجی وارد نشد.${await passTurn(ctx)}`);
+    // نتیجهٔ منفی، شدت شکست را به دمیج خودزنی تبدیل می‌کند؛
+    // از همان فرمول دمیج تکنیک و قدرمطلق نتیجه استفاده می‌کنیم.
+    const selfDmg = techDamage(tech, Math.abs(roll.result));
+    const res = await applyDamage(env, chat, me, selfDmg);
+
+    await logEvent(env, {
+      chat,
+      user: uid,
+      kind: 'event',
+      text: 'attack-self-damage',
+      data: {
+        tech: key,
+        roll,
+        dmg: selfDmg,
+        hp_after: res.hp,
+        dead: res.dead
+      }
+    });
+
+    const tail = await afterResolve(ctx);
+    const death = res.dead ? ' ☠️ خودزنی باعث حذف تو شد.' : '';
+    return sayThenRefresh(
+      ctx,
+      `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.hp}${death}${tail}`
+    );
   }
 
   const dmg = techDamage(tech, roll.result);
