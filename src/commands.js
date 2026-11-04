@@ -5,11 +5,10 @@ import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue, MAX_SPAM } from './game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
-import { say, isMaster, resolveId, dummyId, own } from './util.js';
+import { say, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
-import * as T from './testmode.js';
 import * as R from './report.js';
-import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel } from './game/ui.js';
+import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel, sendDefensePrompt, clearDefensePrompts } from './game/ui.js';
 
 const ANON_ADMIN_ID = 1087968824; // آیدی ثابتی که تلگرام برای «ادمین ناشناس» می‌فرستد
 
@@ -58,7 +57,6 @@ async function afterResolve(ctx) {
   const { env, chat } = ctx;
   const left = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
   if (left.n > 0) return '';
-  if (ctx.private) return ''; // حالت تست: بازی تمام نمی‌شود و نوبت نداریم
   const win = await checkWin(env, chat);
   if (win) {
     ctx.refreshAfter = true; // رفرش پنل بعد از ارسال پیام نتیجه (ترتیب پیام‌ها)
@@ -69,9 +67,8 @@ async function afterResolve(ctx) {
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
-// نوبت را به نفر بعد می‌دهد (در پیوی/حالت تست نوبت نداریم)
+// نوبت را به نفر بعد می‌دهد
 async function passTurn(ctx) {
-  if (ctx.private) return '';
   const next = await advanceTurn(ctx.env, ctx.chat);
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
@@ -92,6 +89,7 @@ async function resolveHits(ctx, target, defValue, label) {
     out.push(`${label}: دفاع ${defValue} از ${r.dmg} دمیج ← ${final} دمیج خورد.\n❤️ جان ${mention(target)}: ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`);
     await logEvent(env, { chat, user: target.user_id, kind: 'event', text: 'defend', data: { attacker: r.attacker_id, tech: r.tech, dmg: r.dmg, defense: defValue, final, hp_after: res.hp, dead: res.dead } });
   }
+  await clearDefensePrompts(env, chat, target.user_id); // پیام دکمه‌دار دفاع این بازیکن پاک شود
   if (!out.length) return say(ctx, 'این حمله قبلاً حل شده.');
   const tail = await afterResolve(ctx);
   await sayThenRefresh(ctx, out.join('\n') + tail);
@@ -99,24 +97,23 @@ async function resolveHits(ctx, target, defValue, label) {
 
 // ---------- دستورهای مستر ----------
 
-// ساخت بازی جدید: لابی تازه + پنل دکمه‌ای جدید (پیام جدید ارسال و پین می‌شود)
+// /newgame — لابی تازه می‌سازد و یک پنل ثبت‌نام (دکمه‌ای) جدید می‌فرستد و پین می‌کند
 async function newgame(ctx) {
-  if (!isMaster(ctx)) return say(ctx, "فقط مستر می‌تواند بازی بسازد.");
+  if (!isMaster(ctx)) return say(ctx, 'فقط مستر می‌تواند بازی بسازد.');
   const { env, chat } = ctx;
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
-  await run(env.DB, "DELETE FROM players WHERE chat_id=?", chat);
-  await run(env.DB, "DELETE FROM pending WHERE chat_id=?", chat);
-  // پنل قدیمی را فراموش می‌کنیم تا ensureBattlePanel به‌جای ویرایش پیام قدیمی، پیام جدید بفرستد
-  await run(env.DB, "DELETE FROM battle_ui WHERE chat_id=?", chat);
+  await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
+  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
+  // پنل قدیمی را فراموش می‌کنیم تا به‌جای ویرایش پیام قدیمی، پیام جدید ارسال شود
+  await run(env.DB, 'DELETE FROM battle_ui WHERE chat_id=?', chat);
   try {
     await ensureBattlePanel(env, chat);
-    await logEvent(env, { chat, user: ctx.uid, kind: "event", text: "newgame" });
+    await logEvent(env, { chat, user: ctx.uid, kind: 'event', text: 'newgame' });
   } catch (e) {
-    console.error("newgame panel failed:", e);
-    return say(ctx, "⚠️ بازی ساخته شد ولی ارسال پنل ثبت‌نام با خطا مواجه شد. دوباره /newgame بزن.");
+    console.error('newgame panel failed:', e);
+    return say(ctx, '⚠️ بازی ساخته شد ولی ارسال پنل ثبت‌نام با خطا مواجه شد. دوباره /newgame بزن.');
   }
 }
-__name(newgame, "newgame");
 
 // /endgame — مستر بازی جاری را می‌بندد؛ حمله‌های منتظر دفاع پاک می‌شوند و پنل «پایان بازی» را نشان می‌دهد
 async function endgame(ctx) {
@@ -135,7 +132,7 @@ async function endgame(ctx) {
 async function team(ctx) {
   if (!isMaster(ctx)) return say(ctx, 'فقط مستر.');
   const tid = resolveId(ctx, ctx.args[1]);
-  if (!tid || !ctx.args[0]) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/team نام_تیم</code> (حذف تیم: <code>/team -</code>). در پیوی: <code>/team نام me</code>');
+  if (!tid || !ctx.args[0]) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/team نام_تیم</code> (حذف تیم: <code>/team -</code>)');
   const name = ctx.args[0] === '-' ? '' : ctx.args[0];
   const p = await getPlayer(ctx.env, ctx.chat, tid);
   if (!p) return say(ctx, 'این بازیکن در بازی نیست.');
@@ -159,13 +156,13 @@ async function buff(ctx) {
   const kind = (ctx.args[0] || '').toLowerCase();
   const amount = parseInt(ctx.args[1], 10);
   const tid = resolveId(ctx, ctx.args[2]);
-  if (!tid || !['hp', 'np'].includes(kind) || !amount) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/buff hp 20</code> یا <code>/buff np 30</code>. در پیوی: <code>/buff hp 20 me</code>');
+  if (!tid || !['hp', 'np'].includes(kind) || !amount) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/buff hp 20</code> یا <code>/buff np 30</code>');
   const p = await getPlayer(ctx.env, ctx.chat, tid);
   if (!p) return say(ctx, 'این بازیکن در بازی نیست.');
   if (kind === 'hp') {
     const hp = Math.max(0, p.hp + amount);
     await run(ctx.env.DB, 'UPDATE players SET hp=?, max_hp=MAX(max_hp, ?), alive=? WHERE chat_id=? AND user_id=?', hp, hp, hp > 0 ? 1 : 0, ctx.chat, p.user_id);
-    if (hp <= 0 && !ctx.private) { const win = await checkWin(ctx.env, ctx.chat); if (win) { ctx.refreshAfter = true; return sayThenRefresh(ctx, `✨ باف جان: ${mention(p)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`); } }
+    if (hp <= 0) { const win = await checkWin(ctx.env, ctx.chat); if (win) { ctx.refreshAfter = true; return sayThenRefresh(ctx, `✨ باف جان: ${mention(p)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`); } }
     return say(ctx, `✨ باف جان: ${mention(p)} → ❤️ ${hp}`);
   }
   const np = Math.max(0, p.np + amount);
@@ -178,7 +175,7 @@ async function effect(ctx) {
   if (!isMaster(ctx)) return say(ctx, 'فقط مستر.');
   const kind = (ctx.args[0] || '').toLowerCase();
   const tid = resolveId(ctx, ctx.args[1]);
-  if (!tid || !['poison', 'drain', 'clear'].includes(kind)) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/effect poison</code> | <code>drain</code> | <code>clear</code>. در پیوی: <code>/effect poison me</code>');
+  if (!tid || !['poison', 'drain', 'clear'].includes(kind)) return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/effect poison</code> | <code>drain</code> | <code>clear</code>');
   const p = await getPlayer(ctx.env, ctx.chat, tid);
   if (!p) return say(ctx, 'این بازیکن در بازی نیست.');
   const { env, chat } = ctx;
@@ -227,7 +224,7 @@ async function chars(ctx) {
 async function techs(ctx) {
   const p = await getPlayer(ctx.env, ctx.chat, ctx.uid);
   if (!p) return say(ctx, 'تو در بازی نیستی.');
-  const keys = ctx.private ? Object.keys(TECHNIQUES) : (CHARACTERS[p.char_key]?.techs || []);
+  const keys = CHARACTERS[p.char_key]?.techs || [];
   const lines = keys.map((k) => {
     const t = TECHNIQUES[k];
     return t ? `<code>${k}</code> — ${esc(t.name)} (پایه ${t.base}، ${t.kind})` : '';
@@ -255,10 +252,10 @@ async function status(ctx) {
 
 export async function attack(ctx) {
   const { env, chat } = ctx;
-  const uid = ctx.asId ?? ctx.uid; // در تست، /hit دامی را مهاجم می‌کند
+  const uid = ctx.uid;
   const game = await getGame(env, chat);
-  if (!game || game.status !== 'active') return say(ctx, ctx.private ? 'بازی فعال نیست. /test بزن.' : 'بازی فعال نیست.');
-  if (!ctx.private && game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  if (!game || game.status !== 'active') return say(ctx, 'بازی فعال نیست.');
+  if (game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
   const me = await getPlayer(env, chat, uid);
   if (!me || !me.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
   const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
@@ -266,7 +263,7 @@ export async function attack(ctx) {
 
   const key = (ctx.args[0] || '').toLowerCase();
   const tech = own(TECHNIQUES, key);
-  if (!tech || (!ctx.private && !CHARACTERS[me.char_key]?.techs?.includes(key))) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
+  if (!tech || !CHARACTERS[me.char_key]?.techs?.includes(key)) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
   if (me.last_tech === key && me.spam >= MAX_SPAM) return say(ctx, `❌ ضد اسپم: ${MAX_SPAM} بار پشت هم زدی، تکنیک دیگری بزن.`);
 
   // هدف‌ها
@@ -276,7 +273,7 @@ export async function attack(ctx) {
     targets = everyone.filter((p) => p.user_id !== uid && (!me.team || p.team !== me.team));
   } else {
     const tid = resolveId(ctx, ctx.args[1]);
-    if (!tid) return say(ctx, ctx.private ? 'هدف را بنویس: me یا d1 یا d2. مثال: <code>/attack blackflash d1</code>' : 'روی پیام هدف ریپلای کن.');
+    if (!tid) return say(ctx, 'روی پیام هدف ریپلای کن.');
     const t = await getPlayer(env, chat, tid);
     if (!t || !t.alive || t.user_id === uid) return say(ctx, 'هدف نامعتبر است.');
     if (me.team && t.team === me.team) return say(ctx, 'هم‌تیمی را نمی‌شود زد.');
@@ -318,8 +315,13 @@ export async function attack(ctx) {
   for (const t of targets) {
     await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
-  text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}\n<code>/defend dodge</code> یا /nodefend`;
-  await say(ctx, text);
+  text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}`;
+  await say(ctx, text); // اول پیام تاس/نتیجه
+  // بعد از پیام تاس: برای هر مدافع یک پیام جدا با دکمه‌های دفاع
+  for (const t of targets) {
+    const ok = await sendDefensePrompt(env, chat, t, me, dmg);
+    if (!ok) await say(ctx, `⚠️ ارسال دکمه‌های دفاع ${mention(t)} ناموفق بود. با <code>/defend dodge</code> یا /nodefend دفاع کن.`);
+  }
   await refreshBattlePanel(env, chat);
 }
 
@@ -327,22 +329,11 @@ export async function defend(ctx) {
   const key = (ctx.args[0] || '').toLowerCase();
   const def = own(DEFENSES, key);
   if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');
-  const who = ctx.private && ctx.args[1] ? resolveId(ctx, ctx.args[1]) : ctx.uid;
-  const me = await getPlayer(ctx.env, ctx.chat, who);
+  const me = await getPlayer(ctx.env, ctx.chat, ctx.uid);
   if (!me || !me.alive) return say(ctx, 'بازیکن در بازی نیست.');
   const roll = d10();
   const value = defenseValue(def, roll);
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll})`);
-}
-
-// تست: دامی به تو حمله کند. /hit d1 blackflash
-async function hit(ctx) {
-  if (!ctx.private) return say(ctx, 'این دستور فقط در پیوی ربات (حالت تست) است.');
-  const id = dummyId(ctx.args[0]);
-  if (!id) return say(ctx, 'مثال: <code>/hit d1 blackflash</code>');
-  ctx.asId = id;
-  ctx.args = [ctx.args[1] || 'punch', 'me'];
-  await attack(ctx);
 }
 
 async function help(ctx) {
@@ -367,14 +358,6 @@ async function help(ctx) {
       '/bug توضیح — (ریپلای روی پیامی که مشکل داشت) ثبت گزارش',
       '/id — آیدی عددی تو و چت',
       '<b>بررسی (فقط مستر/سازنده):</b> /bugs /bugshow N /bugdone N /bugopen N /bugexport /logs',
-      '',
-      '<b>حالت تست (فقط پیوی ربات)</b>',
-      '/test [کاراکتر] — بازی تستی با دو دامی d1 و d2',
-      '/attack تکنیک d1 — /hit d1 تکنیک — /defend dodge [d1] — /nodefend [d1]',
-      '/roll [تعداد] — بررسی تاس',
-      '/sim [تکنیک] — جدول دمیج و هزینه',
-      '/simdef [دفاع] — جدول دفاع',
-      '/set me|d1|d2 hp|np عدد — /fill — /rules',
     ].join('\n')
   );
 }
@@ -396,14 +379,6 @@ const HANDLERS = {
   status,
   buff,
   effect,
-  hit,
-  test: T.test,
-  roll: T.roll,
-  sim: T.sim,
-  simdef: T.simdef,
-  set: T.set,
-  fill: T.fill,
-  rules: T.rules,
   bug: R.bug,
   report: R.bug,
   باگ: R.bug,
