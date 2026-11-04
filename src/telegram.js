@@ -23,6 +23,47 @@ export function mention(p) {
 }
 
 // --- فراخوانی خام API تلگرام ---
+// --- صف ارسال پیام برای هر چت + رعایت فاصله‌ی یک‌ثانیه‌ای و retry تلگرام ---
+const sendQueues = new Map();
+const lastSendAt = new Map();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function queuedSendMessage(env, chatId, body) {
+  const key = String(chatId);
+  const previous = sendQueues.get(key) || Promise.resolve();
+  const task = previous.catch(() => {}).then(async () => {
+    const wait = Math.max(0, 1000 - (Date.now() - (lastSendAt.get(key) || 0)));
+    if (wait) await sleep(wait);
+
+    let attempt;
+    for (let retry = 0; retry < 4; retry++) {
+      attempt = await callTelegram(env, 'sendMessage', body);
+      if (attempt.response.ok && attempt.result?.ok) {
+        lastSendAt.set(key, Date.now());
+        return attempt;
+      }
+
+      const retryAfter = Number(attempt.result?.parameters?.retry_after || 0);
+      if (attempt.response.status !== 429 && retryAfter <= 0) {
+        lastSendAt.set(key, Date.now());
+        return attempt;
+      }
+
+      await sleep(Math.max(1000, retryAfter * 1000));
+    }
+
+    lastSendAt.set(key, Date.now());
+    return attempt;
+  });
+
+  sendQueues.set(key, task);
+  try {
+    return await task;
+  } finally {
+    if (sendQueues.get(key) === task) sendQueues.delete(key);
+  }
+}
+
 export async function callTelegram(env, method, body) {
   const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
     method: 'POST',
@@ -47,10 +88,10 @@ export async function send(env, chatId, text, replyTo) {
     ...(replyTo == null ? {} : { reply_to_message_id: replyTo }),
     allow_sending_without_reply: true,
   };
-  let { response, result } = await callTelegram(env, 'sendMessage', { ...base, text, parse_mode: 'HTML' });
+  let { response, result } = await queuedSendMessage(env, chatId, { ...base, text, parse_mode: 'HTML' });
   if ((!response.ok || !result?.ok) && /parse entities/i.test(result?.description || '')) {
     console.error('HTML parse failed, resending as plain text:', result?.description);
-    ({ response, result } = await callTelegram(env, 'sendMessage', { ...base, text: plain(text) }));
+    ({ response, result } = await queuedSendMessage(env, chatId, { ...base, text: plain(text) }));
   }
   if (!response.ok || !result?.ok) {
     throw new Error(`Telegram sendMessage failed (${response.status}): ${result?.description || 'unknown error'}`);
@@ -81,7 +122,7 @@ export async function sendDocument(env, chatId, filename, content, caption = '',
 // --- ارسال پیام همراه با دکمه‌های شیشه‌ای ---
 export async function sendKeyboard(env, chatId, text, replyMarkup) {
   if (!env.BOT_TOKEN) throw new Error('BOT_TOKEN is not configured');
-  const { response, result } = await callTelegram(env, 'sendMessage', {
+  const { response, result } = await queuedSendMessage(env, chatId, {
     chat_id: chatId,
     text,
     parse_mode: 'HTML',
