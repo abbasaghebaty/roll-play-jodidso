@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS processed_updates (
 );
 
 
+-- پیام‌های موقت ربات (نتیجه‌ها و دکمه‌های دفاع) برای پاک‌سازی دقیق.
+CREATE TABLE IF NOT EXISTS bot_msgs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  kind TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_bot_msgs_chat_kind ON bot_msgs (chat_id, kind);
+
 -- پیام ثابت پنل مبارزه؛ افزودن این جدول داده‌های بازی‌های قبلی را تغییر نمی‌دهد.
 CREATE TABLE IF NOT EXISTS battle_ui (
   chat_id INTEGER PRIMARY KEY,
