@@ -99,14 +99,24 @@ async function resolveHits(ctx, target, defValue, label) {
 
 // ---------- دستورهای مستر ----------
 
+// ساخت بازی جدید: لابی تازه + پنل دکمه‌ای جدید (پیام جدید ارسال و پین می‌شود)
 async function newgame(ctx) {
-  if (!isMaster(ctx)) return say(ctx, 'فقط مستر می‌تواند بازی بسازد.');
+  if (!isMaster(ctx)) return say(ctx, "فقط مستر می‌تواند بازی بسازد.");
   const { env, chat } = ctx;
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
-  await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
-  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
-  await ensureBattlePanel(env, chat);
+  await run(env.DB, "DELETE FROM players WHERE chat_id=?", chat);
+  await run(env.DB, "DELETE FROM pending WHERE chat_id=?", chat);
+  // پنل قدیمی را فراموش می‌کنیم تا ensureBattlePanel به‌جای ویرایش پیام قدیمی، پیام جدید بفرستد
+  await run(env.DB, "DELETE FROM battle_ui WHERE chat_id=?", chat);
+  try {
+    await ensureBattlePanel(env, chat);
+    await logEvent(env, { chat, user: ctx.uid, kind: "event", text: "newgame" });
+  } catch (e) {
+    console.error("newgame panel failed:", e);
+    return say(ctx, "⚠️ بازی ساخته شد ولی ارسال پنل ثبت‌نام با خطا مواجه شد. دوباره /newgame بزن.");
+  }
 }
+__name(newgame, "newgame");
 
 // /endgame — مستر بازی جاری را می‌بندد؛ حمله‌های منتظر دفاع پاک می‌شوند و پنل «پایان بازی» را نشان می‌دهد
 async function endgame(ctx) {
