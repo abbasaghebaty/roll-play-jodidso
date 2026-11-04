@@ -20,6 +20,18 @@ import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback, de
 
 const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}`;
 
+async function editOrSendKeyboard(env, chat, messageId, text, markup) {
+  try {
+    return await editMessage(env, chat, messageId, text, markup);
+  } catch (e) {
+    if (!/429|Too Many Requests/i.test(String(e?.message || e))) throw e;
+    console.warn('Telegram edit rate limited; sending a replacement keyboard message.');
+    const sent = await sendKeyboard(env, chat, text, markup);
+    await deleteMessage(env, chat, messageId);
+    return sent;
+  }
+}
+
 // ---------- ۱) پیام نوبت و پاپ‌آپ‌ها ----------
 
 function turnPromptView(player) {
@@ -119,7 +131,7 @@ async function settleMenuMessage(env, chat, messageId, before) {
     const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, before.turnUser);
     if (player) {
       const v = turnPromptView(player);
-      await editMessage(env, chat, messageId, v.text, v.markup);
+      await editOrSendKeyboard(env, chat, messageId, v.text, v.markup);
     }
   } catch (e) {
     console.error('settleMenuMessage failed:', e);
@@ -264,7 +276,7 @@ async function showTechniqueMenu(query, env, chat, player) {
 
   rows.push([{ text: '↩️ بازگشت', callback_data: 'rp:back' }]);
 
-  await editMessage(
+  await editOrSendKeyboard(
     env,
     chat,
     query.message.message_id,
@@ -356,7 +368,7 @@ export async function handleBattleCallback(query, env, handlers) {
     if (action === 'back') {
       await answerCallback(env, query.id, 'بازگشت');
       const v = turnPromptView(player);
-      return editMessage(env, chat, m.message_id, v.text, v.markup);
+      return editOrSendKeyboard(env, chat, m.message_id, v.text, v.markup);
     }
 
     await answerCallback(env, query.id, 'انتخاب تکنیک');
@@ -407,7 +419,7 @@ export async function handleBattleCallback(query, env, handlers) {
 
     await answerCallback(env, query.id, 'هدف را انتخاب کن');
 
-    await editMessage(
+    await editOrSendKeyboard(
       env,
       chat,
       m.message_id,
