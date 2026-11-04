@@ -43,6 +43,16 @@ export async function handleUpdate(update, env) {
 
 // ---------- کمکی ----------
 
+// پیام را می‌فرستد و بعدش (اگر لازم بود) پنل/پیام نوبت جدید را رفرش می‌کند،
+// تا همیشه اول پیام تاس/نتیجه بیاید و بعد پیام نوبت بازیکن بعدی.
+async function sayThenRefresh(ctx, text) {
+  await say(ctx, text);
+  if (ctx.refreshAfter) {
+    ctx.refreshAfter = false;
+    await refreshBattlePanel(ctx.env, ctx.chat);
+  }
+}
+
 // بعد از تمام شدن همه‌ی دفاع‌ها: بررسی برنده یا رفتن به نوبت بعد
 async function afterResolve(ctx) {
   const { env, chat } = ctx;
@@ -51,11 +61,11 @@ async function afterResolve(ctx) {
   if (ctx.private) return ''; // حالت تست: بازی تمام نمی‌شود و نوبت نداریم
   const win = await checkWin(env, chat);
   if (win) {
-    await refreshBattlePanel(env, chat);
+    ctx.refreshAfter = true; // رفرش پنل بعد از ارسال پیام نتیجه (ترتیب پیام‌ها)
     return `\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`;
   }
   const next = await advanceTurn(env, chat);
-  await refreshBattlePanel(env, chat);
+  ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -63,7 +73,7 @@ async function afterResolve(ctx) {
 async function passTurn(ctx) {
   if (ctx.private) return '';
   const next = await advanceTurn(ctx.env, ctx.chat);
-  await refreshBattlePanel(ctx.env, ctx.chat);
+  ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
@@ -84,7 +94,7 @@ async function resolveHits(ctx, target, defValue, label) {
   }
   if (!out.length) return say(ctx, 'این حمله قبلاً حل شده.');
   const tail = await afterResolve(ctx);
-  await say(ctx, out.join('\n') + tail);
+  await sayThenRefresh(ctx, out.join('\n') + tail);
 }
 
 // ---------- دستورهای مستر ----------
@@ -95,8 +105,21 @@ async function newgame(ctx) {
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
-  await say(ctx, '🎮 بازی جدید ساخته شد. بازیکن‌ها با <code>/join کلید_کاراکتر</code> وارد شوند. لیست کاراکترها: /chars');
   await ensureBattlePanel(env, chat);
+}
+
+// /endgame — مستر بازی جاری را می‌بندد؛ حمله‌های منتظر دفاع پاک می‌شوند و پنل «پایان بازی» را نشان می‌دهد
+async function endgame(ctx) {
+  if (!isMaster(ctx)) return say(ctx, 'فقط مستر می‌تواند بازی را تمام کند.');
+  const { env, chat } = ctx;
+  const game = await getGame(env, chat);
+  if (!game || game.status === 'ended') return say(ctx, 'بازی فعالی برای بستن وجود ندارد.');
+  await run(env.DB, "UPDATE games SET status='ended' WHERE chat_id=?", chat);
+  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
+  try { await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat); } catch (e) { console.error('battle_turn_ui reset failed:', e); }
+  await logEvent(env, { chat, user: ctx.uid, kind: 'event', text: 'endgame', data: { was: game.status } });
+  await say(ctx, '🏁 بازی توسط مستر بسته شد. برای شروع بازی جدید /newgame بزن.');
+  await refreshBattlePanel(env, chat);
 }
 
 async function team(ctx) {
@@ -118,7 +141,6 @@ async function begin(ctx) {
   const players = await alivePlayers(env, chat);
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
   await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
-  await say(ctx, `⚔️ بازی شروع شد!\n🎯 نوبت: ${mention(players[0])}\n\nحمله: <code>/attack کلید_تکنیک</code> (روی پیام هدف ریپلای کن)`);
   await ensureBattlePanel(env, chat);
 }
 
@@ -133,7 +155,7 @@ async function buff(ctx) {
   if (kind === 'hp') {
     const hp = Math.max(0, p.hp + amount);
     await run(ctx.env.DB, 'UPDATE players SET hp=?, max_hp=MAX(max_hp, ?), alive=? WHERE chat_id=? AND user_id=?', hp, hp, hp > 0 ? 1 : 0, ctx.chat, p.user_id);
-    if (hp <= 0 && !ctx.private) { const win = await checkWin(ctx.env, ctx.chat); if (win) { await refreshBattlePanel(ctx.env, ctx.chat); return say(ctx, `✨ باف جان: ${mention(p)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`); } }
+    if (hp <= 0 && !ctx.private) { const win = await checkWin(ctx.env, ctx.chat); if (win) { ctx.refreshAfter = true; return sayThenRefresh(ctx, `✨ باف جان: ${mention(p)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`); } }
     return say(ctx, `✨ باف جان: ${mention(p)} → ❤️ ${hp}`);
   }
   const np = Math.max(0, p.np + amount);
@@ -257,7 +279,7 @@ export async function attack(ctx) {
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
   if (roll.result <= 0) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-neutral', data: { tech: key, roll } });
-    return say(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
+    return sayThenRefresh(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
   }
 
   const dmg = techDamage(tech, roll.result);
@@ -265,7 +287,7 @@ export async function attack(ctx) {
   const cost = tech.free ? 0 : npCost(dmg, tech.kind);
   if (me.np < cost) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
-    return say(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
+    return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
 
   const spam = me.last_tech === key ? me.spam + 1 : 1;
@@ -280,15 +302,15 @@ export async function attack(ctx) {
       text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (غیرقابل‌دفاع). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
     }
     text += await afterResolve(ctx);
-    return say(ctx, text);
+    return sayThenRefresh(ctx, text);
   }
 
   for (const t of targets) {
     await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
   text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}\n<code>/defend dodge</code> یا /nodefend`;
-  await refreshBattlePanel(env, chat);
   await say(ctx, text);
+  await refreshBattlePanel(env, chat);
 }
 
 export async function defend(ctx) {
@@ -325,7 +347,7 @@ async function help(ctx) {
       '/nodefend — بدون دفاع',
       '',
       '<b>مستر</b>',
-      '/newgame /begin',
+      '/newgame /begin /endgame',
       '/team نام — (ریپلای)',
       '/buff hp|np عدد — (ریپلای)',
       '/effect poison|drain|clear — (ریپلای)',
@@ -355,6 +377,7 @@ const HANDLERS = {
   chars,
   team,
   begin,
+  endgame,
   techs,
   defenses,
   attack,
