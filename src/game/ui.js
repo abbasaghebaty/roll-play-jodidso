@@ -305,7 +305,7 @@ export async function handleBattleCallback(query, env, handlers) {
     replyMsg: null,
     anonAdmin: false,
     interactive: true,
-    alert: (text) => answerCallback(env, query.id, text, true),
+    alert: (text) => answerCallback(env, query.id, text),
   };
 
   if (action === 'j') {
