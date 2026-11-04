@@ -1,7 +1,7 @@
 // گزارش مشکل (/bug) و ابزارهای بررسی لاگ. گزارش‌ها در جدول reports ذخیره می‌شوند.
 import { all, first, run } from './db.js';
 import { say, isStaff } from './util.js';
-import { esc, send, sendDocument } from './telegram.js';
+import { esc, send, sendDocument, deleteMessage } from './telegram.js';
 import { logEvent, recentLogs, fmtLog, fmtTime, cut } from './log.js';
 
 const safeParse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -77,7 +77,9 @@ export async function bug(ctx) {
   );
   const id = r?.meta?.last_row_id;
   await logEvent(env, { chat, user: ctx.uid, kind: 'event', text: 'report', data: { report: id } });
-  await say(ctx, `✅ گزارش <b>#${id}</b> ثبت شد (همراه پیام، وضعیت بازی و لاگ‌ها). می‌توانی چند گزارش دیگر هم بدهی.`);
+
+  // دستور /bug بعد از ذخیره‌ی گزارش حذف می‌شود؛ تأییدیه‌ی متنی در گروه ارسال نمی‌کنیم.
+  if (ctx.msgId) await deleteMessage(env, chat, ctx.msgId);
 }
 
 // ---------- بررسی گزارش‌ها (فقط مستر/سازنده) ----------
