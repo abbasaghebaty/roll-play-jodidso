@@ -1,11 +1,12 @@
 import { send, mention, esc } from './telegram.js';
+import { clearResults } from './game/cleanup.js';
 import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue, MAX_SPAM } from './game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
-import { say, isMaster, resolveId, own } from './util.js';
+import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
 import * as R from './report.js';
 import { ensureBattlePanel, handleBattleCallback, refreshBattlePanel, sendDefensePrompt, clearDefensePrompts } from './game/ui.js';
@@ -46,7 +47,7 @@ export async function handleUpdate(update, env) {
 // ---------- کمکی ----------
 
 async function sayThenRefresh(ctx, text) {
-  await say(ctx, text);
+  await sayFlow(ctx, text);
   if (ctx.refreshAfter) {
     ctx.refreshAfter = false;
     await refreshBattlePanel(ctx.env, ctx.chat);
@@ -81,6 +82,7 @@ async function resolveHits(ctx, target, defValue, label) {
 
   if (!rows.length) return say(ctx, 'حمله‌ای منتظر دفاع این بازیکن نیست.');
 
+  await clearResults(env, chat);
   const out = [];
 
   for (const r of rows) {
@@ -274,27 +276,25 @@ async function join(ctx) {
   const { env, chat } = ctx;
   const game = await getGame(env, chat);
 
-  if (!game || game.status !== 'lobby') return say(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
+  if (!game || game.status !== 'lobby') return note(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
 
   const key = (ctx.args[0] || '').toLowerCase();
   const c = own(CHARACTERS, key);
 
-  if (!c || c.hidden) return say(ctx, 'کاراکتر پیدا نشد. لیست: /chars');
-  if (await getPlayer(env, chat, ctx.uid)) return say(ctx, 'قبلاً وارد شده‌ای.');
+  if (!c || c.hidden) return note(ctx, 'کاراکتر پیدا نشد.');
+  if (await getPlayer(env, chat, ctx.uid)) return note(ctx, 'قبلاً وارد شده‌ای.');
 
   const taken = await first(env.DB, 'SELECT user_id FROM players WHERE chat_id=? AND char_key=?', chat, key);
-
-  if (taken) return say(ctx, 'این کاراکتر قبلاً انتخاب شده.');
+  if (taken) return note(ctx, 'این کاراکتر قبلاً انتخاب شده.');
 
   const cnt = await first(env.DB, 'SELECT COALESCE(MAX(seat), -1) + 1 AS n FROM players WHERE chat_id=?', chat);
-
   await run(
     env.DB,
     'INSERT INTO players (chat_id, user_id, name, char_key, hp, max_hp, np, max_np, seat) VALUES (?,?,?,?,?,?,?,?,?)',
     chat, ctx.uid, ctx.uname, key, c.hp, c.hp, c.np, c.np, cnt.n
   );
 
-  await say(ctx, `✅ ${esc(ctx.uname)} شد ${esc(c.name)}\n❤️ ${c.hp}  🔮 ${c.np}`);
+  await note(ctx, `✅ کاراکتر ${esc(c.name)} برای تو ثبت شد. ❤️ ${c.hp}  🔮 ${c.np}`);
   await refreshBattlePanel(env, chat);
 }
 
@@ -393,6 +393,7 @@ export async function attack(ctx) {
 
   if (!targets.length) return say(ctx, 'هدفی نیست.');
 
+  await clearResults(env, chat);
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
 
@@ -457,7 +458,7 @@ export async function attack(ctx) {
 
   text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}`;
 
-  await say(ctx, text);
+  await sayFlow(ctx, text);
 
   for (const t of targets) {
     const ok = await sendDefensePrompt(env, chat, t, me, dmg);
@@ -480,6 +481,10 @@ export async function defend(ctx) {
 
   if (!me || !me.alive) return say(ctx, 'بازیکن در بازی نیست.');
 
+  const pending = await all(ctx.env.DB, 'SELECT id FROM pending WHERE chat_id=? AND target_id=?', ctx.chat, me.user_id);
+  if (!pending.length) return say(ctx, 'حمله‌ای منتظر دفاع تو نیست.');
+
+  await clearResults(ctx.env, ctx.chat);
   const roll = d10();
   const value = defenseValue(def, roll);
 
