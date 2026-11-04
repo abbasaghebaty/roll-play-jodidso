@@ -3,7 +3,7 @@
 // رابط کاربری بازی در گروه: پنل ثابت (لابی/نبرد)، پیام نوبت با دکمه‌ها
 // و پردازش کلیک دکمه‌ها (callback_data با پیشوند rp:).
 // بخش‌ها:
-//   ۱) پیام نوبت و پاپ‌آپ‌های وضعیت/تکنیک‌ها
+//   ۱) پیام نوبت، پیام دفاع و پاپ‌آپ‌های وضعیت/تکنیک‌ها
 //   ۲) پنل ثابت (رندر، ساخت، رفرش و اعلام نوبت)
 //   ۳) هندلر کلیک دکمه‌ها (handleBattleCallback)
 // دکمه‌ها: rp:go حمله | rp:tl تکنیک‌های من | rp:status وضعیت | rp:back بازگشت
@@ -34,6 +34,45 @@ function turnPromptView(player) {
 async function sendTurnPrompt(env, chat, player) {
   const v = turnPromptView(player);
   await sendKeyboard(env, chat, v.text, v.markup);
+}
+
+// پیام دفاع: بعد از هر حمله‌ی قابل‌دفاع، یک پیام جدا با دکمه برای خودِ مدافع ارسال می‌شود.
+// شناسه‌ی پیام در جدول bot_msgs (kind = def:آیدی_مدافع) نگه داشته می‌شود تا بعد از دفاع پاک شود.
+// دکمه‌ها: rp:d:کلید_دفاع:آیدی_مدافع | rp:n:x:آیدی_مدافع (بدون دفاع) — فقط خودِ مدافع می‌تواند بزند.
+function defensePromptView(target, attacker, dmg) {
+  const text = `🛡 ${mention(target)}، ${mention(attacker)} حمله کرد و ${dmg} دمیج به تو می‌رسد!\n\nیکی از دفاع‌ها را انتخاب کن:`;
+  const rows = Object.entries(DEFENSES).map(([key, def]) => [
+    { text: `🛡 ${def.name}`, callback_data: `rp:d:${key}:${target.user_id}` },
+  ]);
+  rows.push([{ text: '⏭️ بدون دفاع', callback_data: `rp:n:x:${target.user_id}` }]);
+  return { text, markup: { inline_keyboard: rows } };
+}
+
+// پیام دفاع را می‌فرستد؛ اگر موفق شد true برمی‌گرداند (خطا فقط لاگ می‌شود و حمله را خراب نمی‌کند)
+export async function sendDefensePrompt(env, chat, target, attacker, dmg) {
+  try {
+    const v = defensePromptView(target, attacker, dmg);
+    const sent = await sendKeyboard(env, chat, v.text, v.markup);
+    const id = sent?.result?.message_id;
+    if (id) await run(env.DB, 'INSERT INTO bot_msgs (chat_id, message_id, kind) VALUES (?,?,?)', chat, id, `def:${target.user_id}`);
+    return true;
+  } catch (e) {
+    console.error('sendDefensePrompt failed:', e);
+    return false;
+  }
+}
+
+// بعد از حل شدن دفاع (با دکمه یا با دستور) پیام(های) دفاع آن بازیکن پاک می‌شود
+export async function clearDefensePrompts(env, chat, targetId) {
+  try {
+    const rows = await all(env.DB, 'SELECT id, message_id FROM bot_msgs WHERE chat_id=? AND kind=?', chat, `def:${targetId}`);
+    for (const r of rows) {
+      await run(env.DB, 'DELETE FROM bot_msgs WHERE id=?', r.id);
+      await deleteMessage(env, chat, r.message_id);
+    }
+  } catch (e) {
+    console.error('clearDefensePrompts failed:', e);
+  }
 }
 
 // تلگرام برای پاپ‌آپ حداکثر ۲۰۰ کاراکتر می‌پذیرد؛ خط‌ها را تا همان حد می‌چیند
@@ -107,7 +146,6 @@ export async function renderBattlePanel(env, chat, messageId = null) {
   const game = await getGame(env, chat);
   if (!game) return;
   const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? ORDER BY seat', chat);
-  const alive = players.filter(p => p.alive);
   const current = players.find(p => p.user_id === game.turn_user);
   const pending = await all(env.DB, 'SELECT * FROM pending WHERE chat_id=? ORDER BY id', chat);
   let text = `⚔️ <b>رول‌پلی انیمه</b>\nوضعیت: <b>${esc(game.status === 'lobby' ? 'لابی ثبت‌نام' : game.status === 'active' ? 'در حال مبارزه' : 'پایان بازی')}</b>\n\n`;
@@ -128,17 +166,8 @@ export async function renderBattlePanel(env, chat, messageId = null) {
       rows.push(available.slice(i, i + 2).map(([key, c]) => ({ text: `👤 ${c.name}`, callback_data: `rp:j:${key}` })));
     }
     if (players.length >= 2) rows.push([{ text: '⚔️ شروع بازی', callback_data: 'rp:b' }]);
-  } else if (game.status === 'active') {
-    const waitingTargets = [...new Set(pending.map(p => p.target_id))];
-    for (const id of waitingTargets) {
-      const target = players.find(p => p.user_id === id);
-      if (!target) continue;
-      for (const [key, def] of Object.entries(DEFENSES)) {
-        rows.push([{ text: `🛡 ${def.name} — ${target.name.slice(0, 18)}`, callback_data: `rp:d:${key}:${id}` }]);
-      }
-      rows.push([{ text: `⏭️ بدون دفاع — ${target.name.slice(0, 18)}`, callback_data: `rp:n:x:${id}` }]);
-    }
   }
+  // در حالت مبارزه پنل دکمه ندارد؛ دکمه‌های نوبت و دفاع در پیام‌های جداگانه می‌آیند.
 
   const markup = { inline_keyboard: rows.slice(0, 90) };
   if (messageId) {
@@ -304,19 +333,19 @@ export async function handleBattleCallback(query, env, handlers) {
   }
 
   if (action === 'd' || action === 'n') {
+    ctx.msgId = null; // نتیجه‌ی دفاع ریپلای پیام دفاع نشود (آن پیام پاک می‌شود)
     const actualTargetId = action === 'n' ? Number(key === 'x' ? targetRaw : key) : targetId;
     const defKey = action === 'd' ? key : null;
     const rows = await all(env.DB, 'SELECT id FROM pending WHERE chat_id=? AND target_id=?', chat, actualTargetId);
-    // در حالت تست (پیوی) دکمه‌ی دفاعِ دامی‌ها هم باید کار کند
-    const isDummy = ctx.private && actualTargetId < 0;
-    if ((actualTargetId !== uid && !isDummy) || !rows.length) return answerCallback(env, query.id, 'این دفاع برای تو نیست یا حمله قبلاً حل شده است.', true);
+    // فقط خودِ مدافع می‌تواند دفاع را بزند
+    if (actualTargetId !== uid || !rows.length) return answerCallback(env, query.id, 'این دفاع برای تو نیست یا حمله قبلاً حل شده است.', true);
     if (action === 'd') {
-      ctx.args = isDummy ? [defKey, 'd' + -actualTargetId] : [defKey];
+      ctx.args = [defKey];
       await answerCallback(env, query.id, 'در حال محاسبه دفاع…');
       await handlers.defend(ctx);
     } else {
       await answerCallback(env, query.id, 'ثبت بدون دفاع…');
-      ctx.args = isDummy ? ['d' + -actualTargetId] : [];
+      ctx.args = [];
       await handlers.nodefend(ctx);
     }
     await refreshBattlePanel(env, chat);
