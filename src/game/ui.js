@@ -1,20 +1,107 @@
+// ============================================================
+// src/game/ui.js
+// رابط کاربری بازی در گروه: پنل ثابت (لابی/نبرد)، پیام نوبت با دکمه‌ها
+// و پردازش کلیک دکمه‌ها (callback_data با پیشوند rp:).
+// بخش‌ها:
+//   ۱) پیام نوبت و پاپ‌آپ‌های وضعیت/تکنیک‌ها
+//   ۲) پنل ثابت (رندر، ساخت، رفرش و اعلام نوبت)
+//   ۳) هندلر کلیک دکمه‌ها (handleBattleCallback)
+// دکمه‌ها: rp:go حمله | rp:tl تکنیک‌های من | rp:status وضعیت | rp:back بازگشت
+//          rp:t:کلید انتخاب تکنیک | rp:a:کلید:هدف انتخاب هدف | rp:d / rp:n دفاع
+// ============================================================
 import { all, first, run } from '../db.js';
 import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
 import { getGame, alivePlayers } from './engine.js';
-import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback } from '../telegram.js';
+import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback, deleteMessage } from '../telegram.js';
 
 const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}`;
 
-async function sendTurnPrompt(env, chat, player) {
+// ---------- ۱) پیام نوبت و پاپ‌آپ‌ها ----------
+
+// متن و دکمه‌های پیام نوبت (هم برای ارسال اولیه و هم برای «بازگشت» استفاده می‌شود)
+// هر دکمه callback_data مخصوص خودش را دارد تا با زدن یکی، بقیه کلیک نخورند.
+function turnPromptView(player) {
   const techs = CHARACTERS[player.char_key]?.techs || [];
   const text = `🎯 ${mention(player)}، نوبت توست!\n\nاز دکمه‌های زیر برای انتخاب حرکت استفاده کن. لازم نیست کامند بنویسی یا کسی را تگ کنی.`;
   const rows = [[{ text: '⚔️ حمله', callback_data: 'rp:go' }]];
-  if (techs.length) rows.push([{ text: '📜 تکنیک‌های من', callback_data: 'rp:go' }]);
+  if (techs.length) rows.push([{ text: '📜 تکنیک‌های من', callback_data: 'rp:tl' }]);
   rows.push([{ text: '📋 وضعیت بازیکن‌ها', callback_data: 'rp:status' }]);
-  await sendKeyboard(env, chat, text, { inline_keyboard: rows });
+  return { text, markup: { inline_keyboard: rows } };
 }
+
+async function sendTurnPrompt(env, chat, player) {
+  const v = turnPromptView(player);
+  await sendKeyboard(env, chat, v.text, v.markup);
+}
+
+// تلگرام برای پاپ‌آپ حداکثر ۲۰۰ کاراکتر می‌پذیرد؛ خط‌ها را تا همان حد می‌چیند
+const ALERT_MAX = 200;
+function fitAlert(lines) {
+  let out = '';
+  for (const line of lines) {
+    const next = out ? `${out}\n${line}` : line;
+    if (next.length > ALERT_MAX - 2) return out ? `${out}\n…` : `${line.slice(0, ALERT_MAX - 2)}…`;
+    out = next;
+  }
+  return out;
+}
+
+const KIND_LABEL = { aoe: ' (همگانی)', undefendable: ' (غیرقابل‌دفاع)' };
+
+// پاپ‌آپ «وضعیت بازیکن‌ها»: فقط برای کسی که دکمه را زده نمایش داده می‌شود (با دکمه‌ی تأیید)
+async function showStatusAlert(query, env, chat, game) {
+  const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? ORDER BY seat', chat);
+  const lines = players.map(p => {
+    const mark = game.status === 'active' && p.user_id === game.turn_user ? '🎯' : (p.alive ? '🟢' : '💀');
+    const who = CHARACTERS[p.char_key]?.name || p.char_key;
+    return `${mark} ${who} (${p.name.slice(0, 12)})  ❤️${p.hp} 🔮${p.np}`;
+  });
+  await answerCallback(env, query.id, fitAlert(lines.length ? lines : ['بازیکنی نیست.']), true);
+}
+
+// پاپ‌آپ «تکنیک‌های من»: برای همه‌ی بازیکن‌ها کار می‌کند و هرکس تکنیک‌های خودش را می‌بیند
+async function showTechniquesAlert(query, env, chat, uid) {
+  const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=?', chat, uid);
+  if (!player) return answerCallback(env, query.id, 'تو در این بازی نیستی.', true);
+  const keys = (CHARACTERS[player.char_key]?.techs || []).filter(k => TECHNIQUES[k]);
+  if (!keys.length) return answerCallback(env, query.id, 'تکنیکی برای تو ثبت نشده.', true);
+  const lines = [`📜 تکنیک‌های ${CHARACTERS[player.char_key]?.name || player.char_key}:`];
+  for (const k of keys) {
+    const t = TECHNIQUES[k];
+    lines.push(`• ${t.name} — پایه ${t.base}${t.free ? ' (بدون NP)' : ''}${KIND_LABEL[t.kind] || ''}`);
+  }
+  await answerCallback(env, query.id, fitAlert(lines), true);
+}
+
+// بعد از حمله: اگر حمله ثبت شد (نوبت عوض شد یا منتظر دفاع است) پیام منوی انتخاب پاک می‌شود؛
+// اگر حمله رد شد (مثلاً NP یا ضد اسپم) منوی نوبت برمی‌گردد تا بازیکن بی‌دکمه نماند.
+async function settleMenuMessage(env, chat, messageId, before) {
+  try {
+    const game = await getGame(env, chat);
+    const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+    const done = !game || game.status !== 'active' || game.turn_user !== before.turnUser || (waiting?.n || 0) > before.pending;
+    if (done) {
+      await deleteMessage(env, chat, messageId);
+      return;
+    }
+    const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, before.turnUser);
+    if (player) {
+      const v = turnPromptView(player);
+      await editMessage(env, chat, messageId, v.text, v.markup);
+    }
+  } catch (e) {
+    console.error('settleMenuMessage failed:', e);
+  }
+}
+
+async function pendingCount(env, chat) {
+  const r = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+  return r?.n || 0;
+}
+
+// ---------- ۲) پنل ثابت ----------
 
 export async function renderBattlePanel(env, chat, messageId = null) {
   const game = await getGame(env, chat);
@@ -122,6 +209,8 @@ async function showTechniqueMenu(query, env, chat, player) {
     { inline_keyboard: rows });
 }
 
+// ---------- ۳) هندلر کلیک دکمه‌ها ----------
+
 export async function handleBattleCallback(query, env, handlers) {
   const data = String(query.data || '');
   const m = query.message;
@@ -157,18 +246,20 @@ export async function handleBattleCallback(query, env, handlers) {
     return;
   }
 
-  if (action === 'status') {
-    const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? ORDER BY seat', chat);
-    const lines = players.map(p => `${p.alive ? '🟢' : '💀'} ${label(p)}`).join('\n') || 'بازیکنی نیست.';
-    await answerCallback(env, query.id, 'وضعیت بازیکن‌ها در پنل ثابت نمایش داده می‌شود.');
-    await sendKeyboard(env, chat, `📋 <b>وضعیت بازیکن‌ها</b>\n\n${lines}`, { inline_keyboard: [[{ text: '↩️ برگشت به نوبت', callback_data: 'rp:back' }]] });
-    return;
-  }
+  // وضعیت و تکنیک‌های من: برای همه آزاد است و فقط به‌صورت پاپ‌آپ برای خودِ کلیک‌کننده نمایش داده می‌شود
+  if (action === 'status') return showStatusAlert(query, env, chat, game);
+  if (action === 'tl') return showTechniquesAlert(query, env, chat, uid);
 
   if (action === 'go' || action === 'back') {
     if (game.status !== 'active' || game.turn_user !== uid) return answerCallback(env, query.id, 'این گزینه فقط برای بازیکن نوبت‌دار است.', true);
     const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, uid);
     if (!player) return answerCallback(env, query.id, 'تو در بازی نیستی یا حذف شده‌ای.', true);
+    if (action === 'back') {
+      // بازگشت به پیام اصلی نوبت (حمله / تکنیک‌های من / وضعیت)
+      await answerCallback(env, query.id, 'بازگشت');
+      const v = turnPromptView(player);
+      return editMessage(env, chat, m.message_id, v.text, v.markup);
+    }
     await answerCallback(env, query.id, 'انتخاب تکنیک');
     return showTechniqueMenu(query, env, chat, player);
   }
@@ -181,13 +272,17 @@ export async function handleBattleCallback(query, env, handlers) {
     if (tech.kind === 'aoe' || tech.kind === 'undefendable') {
       await answerCallback(env, query.id, 'در حال اجرای حمله…');
       ctx.args = [key];
-      return handlers.attack(ctx);
+      ctx.msgId = null; // نتیجه‌ی حمله ریپلای پیام منو نشود (منو بعد از حمله پاک می‌شود)
+      const before = { turnUser: game.turn_user, pending: await pendingCount(env, chat) };
+      await handlers.attack(ctx);
+      await settleMenuMessage(env, chat, m.message_id, before);
+      return;
     }
     const targets = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
     const allowed = targets.filter(p => p.user_id !== uid && (!player.team || p.team !== player.team));
     if (!allowed.length) return answerCallback(env, query.id, 'هدف مجازی وجود ندارد.', true);
     const rows = allowed.map(p => [{ text: `🎯 ${p.name.slice(0, 30)}`, callback_data: `rp:a:${key}:${p.user_id}` }]);
-    rows.push([{ text: '↩️ بازگشت به تکنیک‌ها', callback_data: 'rp:back' }]);
+    rows.push([{ text: '↩️ بازگشت به تکنیک‌ها', callback_data: 'rp:go' }]);
     await answerCallback(env, query.id, 'هدف را انتخاب کن');
     await editMessage(env, chat, m.message_id, `🎯 ${mention(player)}، هدف حمله را انتخاب کن:`, { inline_keyboard: rows });
     return;
@@ -200,7 +295,10 @@ export async function handleBattleCallback(query, env, handlers) {
     ctx.args = [key, targetId ? String(targetId) : ''];
     if (targetId) ctx.reply = { id: targetId };
     await answerCallback(env, query.id, 'در حال اجرای حمله…');
+    ctx.msgId = null; // نتیجه‌ی حمله ریپلای پیام منو نشود (منو بعد از حمله پاک می‌شود)
+    const before = { turnUser: game.turn_user, pending: await pendingCount(env, chat) };
     await handlers.attack(ctx);
+    await settleMenuMessage(env, chat, m.message_id, before);
     await refreshBattlePanel(env, chat);
     return;
   }
