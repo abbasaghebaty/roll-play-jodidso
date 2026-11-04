@@ -4,7 +4,7 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, npCost, d10, defenseValue, MAX_SPAM } from './game/rules.js';
+import { rollAttack, techDamage, npCost, d10, defenseValue } from './game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -89,6 +89,8 @@ async function afterResolve(ctx) {
 
 async function passTurn(ctx) {
   const next = await advanceTurn(ctx.env, ctx.chat);
+  // اعلان نوبت قبلی دیگر معتبر نیست؛ پنل بازیکن بعدی باید دوباره ساخته شود.
+  await run(ctx.env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', ctx.chat);
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
@@ -388,7 +390,6 @@ export async function attack(ctx) {
   const tech = own(TECHNIQUES, key);
 
   if (!tech || !CHARACTERS[me.char_key]?.techs?.includes(key)) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
-  if (me.last_tech === key && me.spam >= MAX_SPAM) return say(ctx, `❌ ضد اسپم: ${MAX_SPAM} بار پشت هم زدی، تکنیک دیگری بزن.`);
 
   let targets = [];
 
@@ -427,12 +428,10 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
 
-  const spam = me.last_tech === key ? me.spam + 1 : 1;
-
   const paid = await run(
     env.DB,
-    'UPDATE players SET np=np-?, last_tech=?, spam=? WHERE chat_id=? AND user_id=? AND np>=?',
-    cost, key, spam, chat, uid, cost
+    'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?',
+    cost, chat, uid, cost
   );
 
   if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
