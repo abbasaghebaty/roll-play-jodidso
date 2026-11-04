@@ -415,9 +415,14 @@ export async function attack(ctx) {
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
 
-  if (roll.result <= 0) {
+  if (roll.result === 0) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-neutral', data: { tech: key, roll } });
     return sayThenRefresh(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
+  }
+
+  if (roll.result < 0) {
+    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-failed', data: { tech: key, roll } });
+    return sayThenRefresh(ctx, `${head}\n❌ ${roll.label}؛ حمله ناموفق بود و دمیجی وارد نشد.${await passTurn(ctx)}`);
   }
 
   const dmg = techDamage(tech, roll.result);
