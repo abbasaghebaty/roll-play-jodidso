@@ -305,14 +305,14 @@ export async function handleBattleCallback(query, env, handlers) {
     replyMsg: null,
     anonAdmin: false,
     interactive: true,
+    alert: (text) => answerCallback(env, query.id, text),
   };
 
   if (action === 'j') {
     if (game.status !== 'lobby') {
-      return answerCallback(env, query.id, 'ثبت‌نام بسته شده؛ بازی شروع شده است.');
+      return answerCallback(env, query.id, 'ثبت‌نام بسته شده؛ بازی شروع شده است.', true);
     }
 
-    await answerCallback(env, query.id, 'در حال ثبت‌نام…');
     await handlers.join(ctx, key);
     await refreshBattlePanel(env, chat);
     return;

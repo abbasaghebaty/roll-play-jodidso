@@ -19,6 +19,19 @@ async function rotate(env, chat, messageId, kind) {
   }
 }
 
+// پاک‌کردن نتیجه‌ی قبلی پیش از شروع تاس بعدی؛ فقط پیام‌های نتیجه‌ی ثبت‌شده حذف می‌شوند.
+export async function clearResults(env, chat) {
+  try {
+    const old = await all(env.DB, 'SELECT id, message_id FROM bot_msgs WHERE chat_id=? AND kind=?', chat, 'result');
+    for (const row of old) {
+      await deleteMessage(env, chat, row.message_id);
+      await run(env.DB, 'DELETE FROM bot_msgs WHERE id=?', row.id);
+    }
+  } catch (e) {
+    console.error('clearResults failed:', e);
+  }
+}
+
 export async function sendResult(env, chat, text, replyTo) {
   const r = await send(env, chat, text, replyTo);
   await rotate(env, chat, r.result?.message_id, 'result');
