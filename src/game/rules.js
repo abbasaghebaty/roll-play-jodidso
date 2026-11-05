@@ -111,9 +111,9 @@ export function rollAttack() {
   const label = resultLabel(result);
   const signed = result > 0 ? `+${result}` : String(result);
   const text =
-    `🔵 تاس آبی: ${pos}\\n` +
-    `🔴 تاس قرمز: ${neg}\\n` +
-    `محاسبه: ${pos} - ${neg} = ${signed}\\n` +
+    `🔵 تاس آبی: ${pos}\n` +
+    `🔴 تاس قرمز: ${neg}\n` +
+    `محاسبه: ${pos} - ${neg} = ${signed}\n` +
     `وضعیت: <b>${label}</b>`;
   return { pos, neg, result, label, text };
 }
