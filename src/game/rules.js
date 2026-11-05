@@ -9,9 +9,9 @@ export const STEP = 5;                 // هر پلهٔ نتیجهٔ تاس = +�
 export const AOE_EXTRA = 10;           // هزینهٔ اضافهٔ NP برای حملهٔ ناحیه‌ای
 export const UNDEFENDABLE_EXTRA = 5;   // هزینهٔ اضافهٔ NP برای حملهٔ غیرقابل‌دفاع
 
-// ---------- جدول احتمال تاس (تنها جای تنظیم احتمال‌ها) ----------
-// کلید = عدد تاس، مقدار = وزن (درصد). مجموع باید دقیقاً ۱۰۰ باشد.
-// برای هر دو تاس (آبی و قرمز) یکسان است. تغییر این جدول نیاز به تغییر الگوریتم ندارد.
+// ---------- جدول احتمال تاس ----------
+// کلید = عدد تاس، مقدار = وزن (درصد). مجموع هر جدول باید دقیقاً ۱۰۰ باشد.
+// تاس قرمز از جدول اصلی استفاده می‌کند؛ تاس آبی کمی به اعداد بالاتر متمایل شده است.
 export const DICE_WEIGHTS = Object.freeze({
   1: 5,
   2: 7,
@@ -23,6 +23,21 @@ export const DICE_WEIGHTS = Object.freeze({
   8: 8,
   9: 7,
   10: 5
+});
+
+// وزن‌های تاس آبی؛ مجموع ۱۰۰ و طوری تنظیم شده که:
+// با حفظ احتمال تساوی، حدود ۵۵٪ نتایج غیرخنثی مثبت و ۴۵٪ منفی باشند.
+export const POSITIVE_DICE_WEIGHTS = Object.freeze({
+  1: 5,
+  2: 5,
+  3: 5,
+  4: 9,
+  5: 19,
+  6: 21,
+  7: 12,
+  8: 10,
+  9: 8,
+  10: 6
 });
 
 // ---------- دسته‌بندی نتیجهٔ نهایی (فقط برای نمایش شدت نتیجه) ----------
@@ -86,19 +101,19 @@ export function resultLabel(result) {
 }
 
 // ---------- تاس حمله: آبی (مثبت) منهای قرمز (منفی) ----------
-// دو تاس کاملاً مستقل‌اند و هر کدام جداگانه از جدول وزنی انتخاب می‌شوند.
+// دو تاس مستقل‌اند؛ آبی از جدول متمایل به اعداد بالاتر و قرمز از جدول اصلی استفاده می‌کند.
 // خروجی: pos = تاس آبی، neg = تاس قرمز، result = pos - neg (بین -۹ تا +۹)،
 // label = وضعیت، text = متن آمادهٔ نمایش در پیام.
 export function rollAttack() {
-  const pos = weightedDie();
-  const neg = weightedDie();
+  const pos = weightedDie(POSITIVE_DICE_WEIGHTS);
+  const neg = weightedDie(DICE_WEIGHTS);
   const result = pos - neg;
   const label = resultLabel(result);
   const signed = result > 0 ? `+${result}` : String(result);
   const text =
-    `🔵 تاس آبی: ${pos}\n` +
-    `🔴 تاس قرمز: ${neg}\n` +
-    `محاسبه: ${pos} - ${neg} = ${signed}\n` +
+    `🔵 تاس آبی: ${pos}\\n` +
+    `🔴 تاس قرمز: ${neg}\\n` +
+    `محاسبه: ${pos} - ${neg} = ${signed}\\n` +
     `وضعیت: <b>${label}</b>`;
   return { pos, neg, result, label, text };
 }
