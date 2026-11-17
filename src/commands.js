@@ -4,8 +4,8 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, techniqueSelfDamage, npCost, d4, defenseValue, aoeTargetCount, attackBaseDamage } from './game/rules.js';
-import { physicalSelfDamage, debuffHpCost, defenseResult } from './game/hadi-rules.js';
+import { rollAttack, weightedDie, POSITIVE_DICE_WEIGHTS, techDamage, techniqueSelfDamage, npCost, d4, defenseValue, aoeTargetCount, attackBaseDamage } from './game/rules.js';
+import { physicalSelfDamage, debuffHpCost, defenseResult, buffValue, rctResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -274,6 +274,58 @@ async function buff(ctx) {
 
   await run(ctx.env.DB, 'UPDATE players SET np=?, max_np=MAX(max_np, ?) WHERE chat_id=? AND user_id=?', np, np, ctx.chat, p.user_id);
   await say(ctx, `✨ باف انرژی: ${mention(p)} → 🔮 ${np}`);
+}
+
+async function boost(ctx) {
+  const { env, chat, uid } = ctx;
+  const game = await getGame(env, chat);
+  if (!game || game.status !== 'active') return say(ctx, 'بازی فعال نیست.');
+  if (game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  const me = await getPlayer(env, chat, uid);
+  if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+
+  const rank = String(ctx.args[0] || '').toLowerCase();
+  const amount = buffValue(rank);
+  if (!amount) return say(ctx, 'نوع باف نامعتبر است. گزینه‌ها: simple, super, reinforced, special');
+
+  // باف به‌صورت سپر جدا از HP نگهداری می‌شود؛ فقط باف ساده رایگان است.
+  const cost = rank === 'simple' ? 0 : amount;
+  if (me.np < cost) return say(ctx, `برای این باف ${cost} NP لازم داری؛ موجودی: ${me.np}.`);
+
+  const paid = await run(env.DB,
+    'UPDATE players SET np=np-?, buff_hp=COALESCE(buff_hp,0)+?, buff_rank=CASE WHEN CASE buff_rank WHEN \'simple\' THEN 1 WHEN \'super\' THEN 2 WHEN \'reinforced\' THEN 2 WHEN \'special\' THEN 3 ELSE 0 END < ? THEN ? ELSE buff_rank END WHERE chat_id=? AND user_id=? AND alive=1 AND np>=?',
+    cost, amount, ({ simple: 1, super: 2, reinforced: 2, special: 3 })[rank], rank, chat, uid, cost
+  );
+  if (paid?.meta?.changes === 0) return say(ctx, 'پرداخت باف انجام نشد؛ وضعیت NP یا نوبت را دوباره بررسی کن.');
+
+  await logEvent(env, { chat, user: uid, kind: 'event', text: 'buff-activated', data: { rank, amount, cost } });
+  const tail = await passTurn(ctx);
+  return sayThenRefresh(ctx, `✨ باف ${rank}: ${amount} واحد سپر اضافه شد. هزینه: ${cost} NP. سپر فعلی: ${(Number(me.buff_hp) || 0) + amount}.${tail}`);
+}
+
+async function rct(ctx) {
+  const { env, chat, uid } = ctx;
+  const game = await getGame(env, chat);
+  if (!game || game.status !== 'active') return say(ctx, 'بازی فعال نیست.');
+  if (game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  const me = await getPlayer(env, chat, uid);
+  if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+
+  // RCT از تاس مثبت وزنی ۱ تا ۹ استفاده می‌کند؛ بازهٔ ۱۰ در این قانون تعریف نشده است.
+  const roll = weightedDie(POSITIVE_DICE_WEIGHTS);
+  const result = rctResult(Math.min(9, roll));
+  if (!result) return say(ctx, 'نتیجهٔ تاس برای RCT معتبر نبود.');
+
+  const updated = await run(env.DB,
+    'UPDATE players SET hp=MIN(max_hp,hp+?), np=MIN(max_np,np+?) WHERE chat_id=? AND user_id=? AND alive=1',
+    result.hp, result.np, chat, uid
+  );
+  if (updated?.meta?.changes === 0) return say(ctx, 'درمان انجام نشد؛ وضعیت بازیکن را بررسی کن.');
+
+  const after = await getPlayer(env, chat, uid);
+  await logEvent(env, { chat, user: uid, kind: 'event', text: 'rct', data: { roll, hp_gain: result.hp, np_gain: result.np, hp_after: after.hp, np_after: after.np } });
+  const tail = await passTurn(ctx);
+  return sayThenRefresh(ctx, `♻️ RCT با تاس ${roll}: تا سقف مجاز +${result.hp} HP و +${result.np} NP. وضعیت فعلی: ❤️ ${after.hp} / 🔮 ${after.np}.${tail}`);
 }
 
 async function effect(ctx) {
@@ -624,6 +676,8 @@ async function help(ctx) {
       '/join کلید — انتخاب کاراکتر',
       '/chars /techs /defenses /status',
       '/attack کلید_تکنیک — (ریپلای روی هدف)',
+      '/boost simple|super|reinforced|special — باف در نوبت خودت',
+      '/rct — درمان در نوبت خودت',
       '/defend کلید_دفاع — دفاع',
       '/nodefend — بدون دفاع',
       '',
@@ -658,6 +712,8 @@ const HANDLERS = {
   nodefend,
   status,
   buff,
+  boost,
+  rct,
   effect,
   bug: R.bug,
   report: R.bug,
