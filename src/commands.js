@@ -8,7 +8,7 @@ import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './gam
 import { defenseResolution, DOMAIN_BARRIERS, domainClashWinner } from './game/hadi-rules.js';
 import { getEffect, setEffect, removeEffect } from './game/effects.js';
 import { activateDomain } from './game/domains.js';
-import { activateSimpleDomain, activateHollowWickerBasket, reinforceHollowWickerBasket, activateFallingBlossom, activateDomainAmplification } from './game/anti-domain.js';
+import { activateSimpleDomain, activateHollowWickerBasket, reinforceHollowWickerBasket, activateFallingBlossom, activateDomainAmplification, damageAntiDomain } from './game/anti-domain.js';
 import { isSealed } from './game/seals.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult, energyRankPenalty } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
@@ -413,6 +413,12 @@ export async function attack(ctx) {
   const tech = own(TECHNIQUES, key);
 
   if (!tech || !CHARACTERS[me.char_key]?.techs?.includes(key)) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
+  const simpleDomainState = await getEffect(env, chat, uid, 'anti_domain_simple');
+  const simpleDomainData = simpleDomainState ? JSON.parse(simpleDomainState.data_json || '{}') : null;
+  if (simpleDomainState && !simpleDomainData?.canAttack) return say(ctx, 'با عهد الزام‌آور قلمروی نوین فقط دفاع و باف مجاز است.');
+  if (await getEffect(env, chat, uid, 'anti_domain_wicker')) return say(ctx, 'تا وقتی هندساین سبد حصیری توخالی حفظ می‌شود، حمله مجاز نیست.');
+  const amplificationState = await getEffect(env, chat, uid, 'domain_amplification');
+  if (amplificationState && tech.attackType !== 'physical') return say(ctx, 'در حالت تقویت قلمرو فقط حملات فیزیکی مجاز است.');
   const exhausted = await getEffect(env, chat, uid, 'domain_exhausted');
   if (exhausted && Number(tech.base) >= 35) {
     return say(ctx, 'به‌دلیل پایان قلمرو، تا یک راند نمی‌توانی از حملات مرتبه مرگ به بالا استفاده کنی.');
@@ -459,7 +465,7 @@ export async function attack(ctx) {
   const poisonState = await getEffect(env, chat, uid, 'poison');
   const immuneToPoison = ['yuji', 'yuji_normal', 'yuji_modulo', 'sukuna', 'yuji_sukuna', 'meguna', 'heian_sukuna'].includes(String(me.char_key).toLowerCase());
   const poisonPenalty = poisonState && !immuneToPoison ? 1 : 0;
-  const effectiveRankPenalty = energyPenalty + poisonPenalty;
+  const effectiveRankPenalty = energyPenalty + poisonPenalty + (amplificationState ? 2 : 0);
   const effectiveTech = effectiveRankPenalty > 0
     ? { ...tech, base: Math.max(0, Number(tech.base) - effectiveRankPenalty * 5) }
     : tech;
@@ -504,7 +510,7 @@ export async function attack(ctx) {
   const domainGuaranteed = Boolean(domainEffect && domainData?.guaranteedHit);
   const effectiveCostKind = domainGuaranteed && tech.kind === 'normal' ? 'undefendable' : tech.kind;
   const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
-  const cost = painRank ? 0 : npCost(dmg, effectiveCostKind);
+  const cost = painRank ? 0 : amplificationState ? dmg : npCost(dmg, effectiveCostKind);
   const npBefore = Number(me.np || 0);
   const deficit = Math.max(0, cost - npBefore);
   const hpPenalty = deficit > 0 ? Math.ceil(deficit / 5) * 5 : 0;
@@ -565,25 +571,45 @@ export async function attack(ctx) {
     }
   }
 
-  if (tech.kind === 'undefendable' || domainGuaranteed) {
-    for (const t of targets) {
-      const res = await applyDamage(env, chat, t, dmg);
-      text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (${domainGuaranteed ? 'ضربه تضمینی قلمرو' : 'غیرقابل‌دفاع'}). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
+  const pendingTargets = [];
+  for (const target of targets) {
+    const targetAmp = await getEffect(env, chat, target.user_id, 'domain_amplification');
+    const targetSimple = await getEffect(env, chat, target.user_id, 'anti_domain_simple');
+    const targetWicker = await getEffect(env, chat, target.user_id, 'anti_domain_wicker');
+    const targetBlossom = await getEffect(env, chat, target.user_id, 'anti_domain_blossom');
+    const domainCounter = Boolean(targetAmp || targetSimple || targetWicker || targetBlossom);
+
+    if (domainGuaranteed && targetBlossom) {
+      const blossomResult = await damageAntiDomain(env, chat, target.user_id, 'anti_domain_blossom', dmg);
+      if (!blossomResult.broken) {
+        text += `\n🌸 احساس شکوفه در حال سقوط، ضربه تضمینی قلمرو را دفع کرد (${blossomResult.remaining} دمیج تا غیرفعال‌شدن).`;
+        continue;
+      }
+      text += '\n🌸 احساس شکوفه در حال سقوط شکست؛ اثر تضمینی قلمرو دوباره فعال شد.';
     }
 
+    const guaranteedForTarget = domainGuaranteed && !domainCounter;
+    const undefendableForTarget = tech.kind === 'undefendable' && !targetAmp;
+    if (guaranteedForTarget || undefendableForTarget) {
+      const res = await applyDamage(env, chat, target, dmg);
+      text += `\n💢 ${mention(target)} ${dmg} دمیج خورد (${guaranteedForTarget ? 'ضربه تضمینی قلمرو' : 'غیرقابل‌دفاع'}). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
+      continue;
+    }
+
+    const incoming = targetAmp ? Math.ceil(dmg / 2) : dmg;
+    await run(env.DB,
+      'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)',
+      chat, uid, target.user_id, incoming, key
+    );
+    pendingTargets.push(target);
+  }
+
+  if (!pendingTargets.length) {
     text += await afterResolve(ctx);
     return sayThenRefresh(ctx, text);
   }
 
-  for (const t of targets) {
-    await run(
-      env.DB,
-      'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)',
-      chat, uid, t.user_id, dmg, key
-    );
-  }
-
-  text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}`;
+  text += `\n\n🛡 منتظر دفاع: ${pendingTargets.map(mention).join('، ')}`;
 
   await sayFlow(ctx, text);
 
