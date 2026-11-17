@@ -1,4 +1,5 @@
 import { all, first, run } from '../db.js';
+import { advanceRound, tickEffects } from './effects.js';
 
 export async function getGame(env, chat) {
   return await first(env.DB, 'SELECT * FROM games WHERE chat_id=?', chat);
@@ -35,6 +36,14 @@ export async function advanceTurn(env, chat) {
   const next =
     alive.find((p) => p.seat > curSeat || (cur && p.seat === curSeat && p.user_id > cur.user_id)) || alive[0];
   await run(env.DB, 'UPDATE games SET turn_user=? WHERE chat_id=?', next.user_id, chat);
+
+  // عبور نوبت از آخرین صندلی به اولین صندلی یعنی شروع راند جدید.
+  if (cur && next.seat <= curSeat) {
+    await advanceRound(env, chat);
+    for (const player of await all(env.DB, 'SELECT user_id FROM players WHERE chat_id=?', chat)) {
+      await tickEffects(env, chat, player.user_id);
+    }
+  }
   return next;
 }
 
