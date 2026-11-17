@@ -5,8 +5,9 @@ import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './game/rules.js';
-import { defenseResolution } from './game/hadi-rules.js';
-import { getEffect, setEffect } from './game/effects.js';
+import { defenseResolution, DOMAIN_BARRIERS, domainClashWinner } from './game/hadi-rules.js';
+import { getEffect, setEffect, removeEffect } from './game/effects.js';
+import { activateDomain } from './game/domains.js';
 import { isSealed } from './game/seals.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult, energyRankPenalty } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
@@ -621,6 +622,65 @@ export async function defend(ctx) {
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll}${specialCost ? `، هزینه ${specialCost} NP` : ''})`, special ? { kind: def.mode, roll } : null);
 }
 
+async function domain(ctx) {
+  const { env, chat, uid } = ctx;
+  const game = await getGame(env, chat);
+  if (!game || game.status !== 'active') return say(ctx, 'بازی فعال نیست.');
+  if (game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  const me = await getPlayer(env, chat, uid);
+  if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+  if (await isSealed(env, chat, uid)) return say(ctx, 'در حالت سیل نمی‌توانی قلمرو فعال کنی.');
+  const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+  if (waiting?.n > 0) return say(ctx, 'ابتدا دفاع حمله‌ی قبلی باید تمام شود.');
+
+  const barrier = String(ctx.args[0] || '').toLowerCase();
+  const spec = DOMAIN_BARRIERS[barrier];
+  if (!spec) return say(ctx, 'نوع حصار: low | high | open | incomplete');
+  if (await getEffect(env, chat, uid, 'domain')) return say(ctx, 'قلمرو تو از قبل فعال است.');
+  if (Number(me.np || 0) < spec.np) {
+    return sayThenRefresh(ctx, `برای این قلمرو ${spec.np} NP لازم است؛ موجودی تو ${me.np} است.${await passTurn(ctx)}`);
+  }
+
+  const activeDomains = await all(env.DB, "SELECT * FROM game_effects WHERE chat_id=? AND effect_type='domain' AND rounds_left>0", chat);
+  for (const active of activeDomains) {
+    const otherData = JSON.parse(active.data_json || '{}');
+    if (otherData.barrier === 'incomplete' || barrier === 'incomplete') {
+      return say(ctx, 'قانون برخورد قلمرو ناقص با این نوع حصار در متن هادی مشخص نشده؛ این کلش را مستر باید تعیین کند.');
+    }
+  }
+
+  const roll = d9();
+  const result = await activateDomain(env, {
+    chat, ownerId: uid, barrier, positiveRoll: roll,
+    data: { character: me.char_key }
+  });
+  await run(env.DB, 'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?', result.npCost, chat, uid, result.npCost);
+
+  let clashText = '';
+  const others = activeDomains.filter(x => x.owner_id !== uid);
+  for (const other of others) {
+    const otherData = JSON.parse(other.data_json || '{}');
+    const winner = domainClashWinner(otherData.barrier, barrier);
+    if (winner === 'tie') {
+      otherData.guaranteedHit = false;
+      const myData = { barrier, guaranteedHit: false, character: me.char_key };
+      await setEffect(env, { chat, ownerId: other.owner_id, targetId: other.target_id, type: 'domain', rounds: other.rounds_left, data: otherData });
+      await setEffect(env, { chat, ownerId: uid, targetId: uid, type: 'domain', rounds: result.rounds, data: myData });
+      clashText = '\\n⚔️ دومین کلش مساوی شد؛ حملات تضمینی دو قلمرو برای صاحبانشان قابل دفاع است.';
+    } else if (winner === 'a') {
+      await removeEffect(env, chat, uid, 'domain');
+      clashText = '\\n⚔️ قلمرو حریف قوی‌تر بود و قلمرو تو را نابود کرد.';
+      break;
+    } else if (winner === 'b') {
+      await removeEffect(env, chat, other.target_id, 'domain');
+      clashText = '\\n⚔️ قلمرو تو برنده کلش شد و قلمرو حریف نابود شد.';
+    }
+  }
+
+  const tail = await afterResolve(ctx);
+  return sayThenRefresh(ctx, `🏯 گسترش قلمرو فعال شد: ${spec.name}\n🎲 تاس مثبت: ${roll}\n⏳ مدت: ${result.rounds} راند\n🔮 مصرف NP: ${result.npCost}${clashText}${tail}`);
+}
+
 async function rct(ctx) {
   const { env, chat, uid } = ctx;
   const game = await getGame(env, chat);
@@ -661,7 +721,7 @@ async function help(ctx) {
       '/join کلید — انتخاب کاراکتر',
       '/chars /techs /defenses /status',
       '/attack کلید_تکنیک — (ریپلای روی هدف)',
-      '/defend کلید_دفاع — دفاع',\n      '/rct — تکنیک نفرینی معکوس',
+      '/defend کلید_دفاع — دفاع',\n      '/rct — تکنیک نفرینی معکوس',\n      '/domain low|high|open|incomplete — گسترش قلمرو',
       '/nodefend — بدون دفاع',
       '',
       '<b>مستر</b>',
