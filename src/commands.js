@@ -7,6 +7,7 @@ import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './game/rules.js';
 import { defenseResolution } from './game/hadi-rules.js';
 import { getEffect, setEffect } from './game/effects.js';
+import { isSealed } from './game/seals.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult, energyRankPenalty } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -400,6 +401,7 @@ export async function attack(ctx) {
   const me = await getPlayer(env, chat, uid);
 
   if (!me || !me.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+  if (await isSealed(env, chat, uid)) return say(ctx, 'تا زمانی که سیل فعال است امکان اجرای نوبت را نداری.');
 
   const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
 
