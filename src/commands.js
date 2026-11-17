@@ -4,7 +4,7 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, techniqueSelfDamage, npCost, d4, defenseValue, aoeTargetCount } from './game/rules.js';
+import { rollAttack, techDamage, techniqueSelfDamage, npCost, d4, defenseValue, aoeTargetCount, attackBaseDamage } from './game/rules.js';
 import { physicalSelfDamage, debuffHpCost, defenseResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -356,7 +356,7 @@ async function techs(ctx) {
 
   const lines = keys.map((k) => {
     const t = TECHNIQUES[k];
-    return t ? `<code>${k}</code> — ${esc(t.name)} (پایه ${t.base}، ${t.kind})` : '';
+    return t ? `<code>${k}</code> — ${esc(t.name)} (پایه ${attackBaseDamage(t)}، ${t.kind})` : '';
   }).filter(Boolean);
 
   await say(ctx, '⚔️ تکنیک‌های تو:\n' + lines.join('\n'));
@@ -486,6 +486,7 @@ export async function attack(ctx) {
         tech: key,
         roll,
         self_damage_rule: tech.physical ? 'physical-tier' : 'half-mirrored-technique',
+        attack_type: tech.physical ? 'physical' : 'projectile',
         dmg: selfDmg,
         np_cost: selfCost,
         np_spent: energy.npSpent,
