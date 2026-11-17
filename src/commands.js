@@ -4,9 +4,9 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, npCost, d10, d4, defenseValue } from './game/rules.js';
+import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './game/rules.js';
 import { defenseResolution } from './game/hadi-rules.js';
-import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff } from './game/hadi-rules.js';
+import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -567,6 +567,35 @@ export async function defend(ctx) {
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll}${specialCost ? `، هزینه ${specialCost} NP` : ''})`, special ? { kind: def.mode, roll } : null);
 }
 
+async function rct(ctx) {
+  const { env, chat, uid } = ctx;
+  const game = await getGame(env, chat);
+  if (!game || game.status !== 'active') return say(ctx, 'بازی فعال نیست.');
+  if (game.turn_user !== uid) return say(ctx, 'نوبت تو نیست.');
+  const me = await getPlayer(env, chat, uid);
+  if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+  const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
+  if (waiting?.n > 0) return say(ctx, 'ابتدا دفاع حمله‌ی قبلی باید تمام شود.');
+
+  const roll = d9();
+  const result = reverseCursedResult(roll);
+  if (!result) return say(ctx, 'نتیجه تاس برای ریورس نامعتبر است.');
+  if (Number(me.np || 0) < result.np) {
+    return sayThenRefresh(ctx, `🌀 ریورس کرس تکنیک: تاس ${roll}؛ ${result.np} NP لازم بود ولی ${me.np} داری. تکنیک اجرا نشد.${await passTurn(ctx)}`);
+  }
+
+  await run(env.DB,
+    'UPDATE players SET np=np-?, hp=hp+?, max_hp=MAX(max_hp,hp+?) WHERE chat_id=? AND user_id=? AND np>=?',
+    result.np, result.hp, result.hp, chat, uid, result.np
+  );
+  await logEvent(env, {
+    chat, user: uid, kind: 'event', text: 'reverse-cursed-technique',
+    data: { roll, hp_buff: result.hp, np_cost: result.np }
+  });
+  const tail = await afterResolve(ctx);
+  return sayThenRefresh(ctx, `🌀 ریورس کرس تکنیک: تاس ${roll}\n❤️ باف HP: +${result.hp}\n🔮 مصرف NP: ${result.np}${tail}`);
+}
+
 async function help(ctx) {
   await say(
     ctx,
@@ -575,7 +604,7 @@ async function help(ctx) {
       '/join کلید — انتخاب کاراکتر',
       '/chars /techs /defenses /status',
       '/attack کلید_تکنیک — (ریپلای روی هدف)',
-      '/defend کلید_دفاع — دفاع',
+      '/defend کلید_دفاع — دفاع',\n      '/rct — تکنیک نفرینی معکوس',
       '/nodefend — بدون دفاع',
       '',
       '<b>مستر</b>',
