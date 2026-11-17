@@ -438,7 +438,7 @@ async function status(ctx) {
 
     const turn = game.status === 'active' && p.user_id === game.turn_user ? '🎯 ' : '';
 
-    return `${turn}${p.alive ? '' : '💀 '}${mention(p)} (${esc(CHARACTERS[p.char_key]?.name || p.char_key)}) ❤️${p.hp} 🔮${p.np} ${flags}`;
+    return `${turn}${p.alive ? '' : '💀 '}${mention(p)} (${esc(CHARACTERS[p.char_key]?.name || p.char_key)}) ❤️${p.hp} 🔮${p.np}${Number(p.buff_hp) > 0 ? ` 🛡${p.buff_hp}` : ''} ${flags}`;
   });
 
   await say(ctx, `📋 وضعیت (${game.status}):\n` + (lines.join('\n') || 'بازیکنی نیست.'));
