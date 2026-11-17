@@ -493,7 +493,8 @@ export async function attack(ctx) {
   const dmg = techDamage(effectiveTech, roll.result);
   const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
   const cost = painRank ? 0 : npCost(dmg, tech.kind);
-  const deficit = Math.max(0, cost - Number(me.np || 0));
+  const npBefore = Number(me.np || 0);
+  const deficit = Math.max(0, cost - npBefore);
   const hpPenalty = deficit > 0 ? Math.ceil(deficit / 5) * 5 : 0;
 
   if (hpPenalty > 0 && me.hp < 5) {
@@ -530,12 +531,12 @@ export async function attack(ctx) {
       roll,
       dmg,
       cost,
-      np_before: me.np,
+      np_before: npBefore,
       targets: targets.map((t) => t.user_id)
     }
   });
 
-  let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
+  let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)${hpPenalty ? ` | دیباف: -${hpPenalty} HP` : ''}${painBuff ? ` | باف NP درد: +${painBuff}` : ''}`;
 
   if (tech.poison) {
     const poisonRounds = Math.floor(Math.max(0, roll.result) / 2);
