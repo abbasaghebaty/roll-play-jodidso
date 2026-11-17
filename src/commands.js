@@ -5,6 +5,7 @@ import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue } from './game/rules.js';
+import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -421,48 +422,53 @@ export async function attack(ctx) {
   }
 
   if (roll.result < 0) {
-    // نتیجهٔ منفی، شدت شکست را به دمیج خودزنی تبدیل می‌کند؛
-    // از همان فرمول دمیج تکنیک و قدرمطلق نتیجه استفاده می‌کنیم.
-    const selfDmg = techDamage(tech, Math.abs(roll.result));
-    const res = await applyDamage(env, chat, me, selfDmg);
+    // سیل‌ها (به‌جز استثناهای شخصیتی) در شکست تاس خودزنی ندارند؛ فقط NP مصرف‌شده هدر می‌رود.
+    const mirrored = techDamage(tech, Math.abs(roll.result));
+    const selfDmg = tech.kind === 'seal'
+      ? 0
+      : tech.kind === 'physical'
+        ? physicalSelfDamage(Math.abs(roll.result))
+        : selfDamageFromTechnique(mirrored);
+    const res = selfDmg ? await applyDamage(env, chat, me, selfDmg) : { hp: me.hp, dead: false };
 
     await logEvent(env, {
-      chat,
-      user: uid,
-      kind: 'event',
-      text: 'attack-self-damage',
-      data: {
-        tech: key,
-        roll,
-        dmg: selfDmg,
-        hp_after: res.hp,
-        dead: res.dead
-      }
+      chat, user: uid, kind: 'event',
+      text: tech.kind === 'seal' ? 'seal-failed' : 'attack-self-damage',
+      data: { tech: key, roll, mirrored_damage: mirrored, dmg: selfDmg, hp_after: res.hp, dead: res.dead }
     });
 
     const tail = await afterResolve(ctx);
-    const death = res.dead ? ' ☠️ خودزنی باعث حذف تو شد.' : '';
-    return sayThenRefresh(
-      ctx,
-      `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.hp}${death}${tail}`
-    );
+    const description = tech.kind === 'seal'
+      ? 'مهروموم ناموفق بود؛ فقط انرژی آن هدر رفت.'
+      : `حمله شکست خورد و ${selfDmg} دمیج خودزنی دریافت کردی.`;
+    const death = res.dead ? ' ☠️ حذف شدی.' : '';
+    return sayThenRefresh(ctx, `${head}\n💥 ${description} ❤️ جان: ${res.hp}${death}${tail}`);
   }
 
   const dmg = techDamage(tech, roll.result);
-  const cost = tech.free ? 0 : npCost(dmg, tech.kind);
+  const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
+  const cost = painRank ? 0 : npCost(dmg, tech.kind);
+  const deficit = Math.max(0, cost - Number(me.np || 0));
+  const hpPenalty = deficit > 0 ? Math.ceil(deficit / 5) * 5 : 0;
 
-  if (me.np < cost) {
-    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
-    return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
+  if (hpPenalty > 0 && me.hp < 5) {
+    return sayThenRefresh(ctx, `${head}\n💥 انرژی کافی نیست و برای دیباف حداقل ۵ HP لازم داری. حمله اجرا نشد.${await passTurn(ctx)}`);
   }
 
   const paid = await run(
     env.DB,
-    'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?',
-    cost, chat, uid, cost
+    'UPDATE players SET np=MAX(0,np-?), hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN alive ELSE 0 END WHERE chat_id=? AND user_id=?',
+    Math.min(cost, Number(me.np || 0)), hpPenalty, hpPenalty, chat, uid
   );
-
-  if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
+  if (paid?.meta?.changes === 0) return say(ctx, 'وضعیت بازیکن تغییر کرده؛ دوباره امتحان کن.');
+  if (hpPenalty > 0) {
+    const refreshed = await getPlayer(env, chat, uid);
+    me.hp = refreshed?.hp ?? Math.max(0, me.hp - hpPenalty);
+    me.np = 0;
+  } else {
+    me.np = Math.max(0, me.np - cost);
+  }
+  const painBuff = painRank ? painRankNpBuff(dmg) : 0;
 
   await logEvent(env, {
     chat,
