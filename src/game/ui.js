@@ -347,6 +347,7 @@ export async function handleBattleCallback(query, env, handlers) {
     }
 
     await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
+    await run(env.DB, 'INSERT OR REPLACE INTO game_round_state (chat_id, round_no) VALUES (?,1)', chat);
 
     await answerCallback(env, query.id, 'بازی شروع شد!');
     await refreshBattlePanel(env, chat);
