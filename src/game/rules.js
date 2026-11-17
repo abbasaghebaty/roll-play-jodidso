@@ -127,7 +127,7 @@ export function techDamage(tech, result) {
   if (!tech || !Number.isFinite(Number(tech.base)) || !Number.isFinite(Number(result))) return 0;
   const roll = Math.trunc(Number(result));
   if (roll < 1 || roll > 9) return 0;
-  return Math.max(0, Number(tech.base) + STEP * (roll - 1));
+  return Math.max(0, attackBaseDamage(tech) + STEP * (roll - 1));
 }
 
 export function npCost(dmg, kind = "normal") {
@@ -172,3 +172,25 @@ export function energyRankPenalty(np){const n=Math.max(0,Number(np)||0);return n
 export function debuffHpCost(missingNp){return Math.ceil(Math.max(0,Number(missingNp)||0)/5)*5;}
 export function poisonAttackPenalty(roll){return Math.floor(Math.max(0,Math.trunc(Number(roll)))/2);}
 export function specialDefenseResult(kind,roll,incomingDamage){const n=Math.trunc(Number(roll)),d=Math.max(0,Math.trunc(Number(incomingDamage)||0));if(!["absolute","reflect"].includes(kind)||n<1||n>4)return {defended:0,reflected:0,cost:0};const amount=n<=3?Math.ceil(d/2):d;return kind==="absolute"?{defended:amount,reflected:0,cost:n<=3?20:25}:{defended:0,reflected:amount,cost:n<=3?25:30};}
+
+// تبدیل رنک حمله به دمیج پایه؛ اگر تکنیک هنوز rank ندارد، base فعلی‌اش حفظ می‌شود.
+export function attackBaseDamage(tech) {
+  if (!tech) return 0;
+  const rank = String(tech.rank || tech.attackRank || '').toLowerCase();
+  const ranked = ATTACK_RANKS[rank];
+  if (Number.isFinite(Number(ranked))) return Number(ranked);
+  if (rank === 'pain') return ATTACK_RANKS.pain;
+  return Math.max(0, Math.trunc(Number(tech.base) || 0));
+}
+
+export function aoeTargetCount(positiveDie) {
+  const roll = Math.min(9, Math.max(1, Math.trunc(Number(positiveDie) || 0)));
+  const ranges = [
+    { min: 1, max: 2, count: 1 },
+    { min: 3, max: 4, count: 2 },
+    { min: 5, max: 6, count: 3 },
+    { min: 7, max: 8, count: 4 },
+    { min: 9, max: 9, count: 5 },
+  ];
+  return ranges.find(x => roll >= x.min && roll <= x.max)?.count || 0;
+}
