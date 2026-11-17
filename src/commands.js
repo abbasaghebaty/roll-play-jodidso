@@ -473,10 +473,10 @@ export async function attack(ctx) {
   if (roll.result < 0) {
     const mirrored = techDamage(effectiveTech, Math.abs(roll.result));
     const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
-    const cost = painRank ? 0 : npCost(mirrored, tech.kind);
+    const cost = painRank ? 0 : tech.kind === 'seal' ? (tech.sealType === 'one_round' ? 10 : 0) : npCost(mirrored, tech.kind);
     const deficit = Math.max(0, cost - Number(me.np || 0));
     const hpPenalty = deficit > 0 && me.hp >= 5 ? Math.ceil(deficit / 5) * 5 : 0;
-    const exceptionalSealUser = ['naoya', 'naobito'].includes(String(me.char_key).toLowerCase());
+    const exceptionalSealUser = ['naoya', 'naobito'].some(name => String(me.char_key).toLowerCase().includes(name));
     const selfDmg = tech.attackType === 'physical'
       ? physicalSelfDamage(Math.abs(roll.result))
       : tech.kind === 'seal' && !exceptionalSealUser
@@ -510,7 +510,7 @@ export async function attack(ctx) {
   const domainGuaranteed = Boolean(domainEffect && domainData?.guaranteedHit);
   const effectiveCostKind = domainGuaranteed && tech.kind === 'normal' ? 'undefendable' : tech.kind;
   const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
-  const cost = painRank ? 0 : amplificationState ? dmg : npCost(dmg, effectiveCostKind);
+  const cost = painRank ? 0 : tech.kind === 'seal' ? (tech.sealType === 'one_round' ? 10 : 0) : amplificationState ? dmg : npCost(dmg, effectiveCostKind);
   const npBefore = Number(me.np || 0);
   const deficit = Math.max(0, cost - npBefore);
   const hpPenalty = deficit > 0 ? Math.ceil(deficit / 5) * 5 : 0;
@@ -560,7 +560,7 @@ export async function attack(ctx) {
   let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)${hpPenalty ? ` | دیباف: -${hpPenalty} HP` : ''}${painBuff ? ` | باف NP درد: +${painBuff}` : ''}`;
 
   if (tech.poison) {
-    const poisonRounds = Math.floor(Math.max(0, roll.result) / 2);
+    const poisonRounds = Math.ceil(Math.max(0, roll.result) / 2);
     if (poisonRounds > 0) {
       for (const target of targets) {
         const targetKey = String(target.char_key || '').toLowerCase();
