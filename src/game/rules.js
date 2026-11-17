@@ -163,7 +163,7 @@ export const DOMAIN_BARRIER_COSTS = Object.freeze({low:70,high:75,open:80,incomp
 export const DOMAIN_BARRIER_BREAK = Object.freeze({low:{outside:70,inside:100},high:{outside:90,inside:135}});
 export const ANTI_DOMAIN_COSTS = Object.freeze({simpleDomain:25,hollowWickerBasket:20,fallingBlossomEmotion:30,domainAmplificationPerRound:15,emptyBarrier:35});
 export const SUMMON_RULES = Object.freeze({activeCost:20,countSacrificeDefense:25,maxEternal:2});
-export const PHYSICAL_SELF_DAMAGE = Object.freeze([{min:1,max:3,damage:10},{min:4,max:6,damage:20},{min:7,max:9,damage:30}]);
+export const PHYSICAL_SELF_DAMAGE = Object.freeze([{min:1,max:3,damage:10},{min:4,max:6,damage:20}]);
 export const SUMMON_SELF_DAMAGE = Object.freeze([{min:1,max:4,damage:10},{min:5,max:7,damage:20},{min:8,max:9,damage:30}]);
 export function rctResult(roll){const n=Math.trunc(Number(roll));return RCT_TIERS.find(x=>n>=x.min&&n<=x.max)||null;}
 export function exposureTargetCount(roll){const n=Math.trunc(Number(roll));return EXPOSURE_TARGETS.find(x=>n>=x.min&&n<=x.max)?.targets||0;}
