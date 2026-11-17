@@ -4,7 +4,7 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, d4, defenseValue } from './game/rules.js';
+import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, d4, defenseValue, aoeTargetCount } from './game/rules.js';
 import { physicalSelfDamage, debuffHpCost, defenseResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -436,6 +436,13 @@ export async function attack(ctx) {
   await clearResults(env, chat);
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
+
+  if (tech.kind === 'aoe' && roll.result > 0) {
+    // تعداد اهداف همگانی از روی تاس مثبت خام تعیین می‌شود؛
+    // اگر حریف کمتری در بازی باشد، فقط همان تعداد موجود هدف قرار می‌گیرند.
+    targets = targets.slice(0, aoeTargetCount(roll.pos));
+    if (!targets.length) return sayThenRefresh(ctx, `${head}\\nهدف معتبری برای حمله همگانی نیست.${await passTurn(ctx)}`);
+  }
 
   if (roll.result === 0) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-neutral', data: { tech: key, roll } });
