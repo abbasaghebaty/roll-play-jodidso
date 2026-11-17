@@ -121,10 +121,10 @@ export function defenseResolution(kind, roll, incomingDamage) {
   const d = Math.max(0, Math.floor(Number(incomingDamage) || 0));
   const r = Math.floor(Number(roll) || 0);
   if (kind === 'absolute' || kind === 'reflect') {
-    if (r === 4) return { defended: kind === 'absolute' ? d : 0, reflected: kind === 'reflect' ? d : 0, cost: kind === 'absolute' ? 25 : 30 };
+    if (r === 4) return { defended: d, reflected: kind === 'reflect' ? d : 0, cost: kind === 'absolute' ? 25 : 30 };
     if (r >= 1 && r <= 3) {
       const amount = Math.ceil(d / 2);
-      return { defended: kind === 'absolute' ? amount : 0, reflected: kind === 'reflect' ? amount : 0, cost: kind === 'absolute' ? 20 : 25 };
+      return { defended: amount, reflected: kind === 'reflect' ? amount : 0, cost: kind === 'absolute' ? 20 : 25 };
     }
     return { defended: 0, reflected: 0, cost: 0 };
   }
