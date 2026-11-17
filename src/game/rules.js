@@ -148,3 +148,23 @@ export function defenseValue(defense, roll) {
   if (!defense) return 0;
   return Math.max(0, Number(defense.base) + Number(defense.perDie || 0) * Number(roll));
 }
+
+
+export const ATTACK_RANKS = Object.freeze({ pain:5, scratch:10, ash:15, wound:20, blood:25, shadow:30, death:35, catastrophe:40, chaos:45, decay:50, crisis:55, madness:60 });
+export const DEFENSE_RANKS = Object.freeze({ dodge:5, simple:15, reinforced:25, advanced:30 });
+export const BUFF_RANKS = Object.freeze({ simple:5, super:15, reinforced:15, special:25 });
+export const RCT_TIERS = Object.freeze([{min:1,max:3,hp:60,np:40},{min:4,max:6,hp:65,np:45},{min:7,max:9,hp:70,np:50}]);
+export const EXPOSURE_TARGETS = Object.freeze([{min:1,max:2,targets:1},{min:3,max:4,targets:2},{min:5,max:6,targets:3},{min:7,max:8,targets:4},{min:9,max:9,targets:5}]);
+export const DOMAIN_BARRIER_COSTS = Object.freeze({low:70,high:75,open:80,incomplete:75});
+export const DOMAIN_BARRIER_BREAK = Object.freeze({low:{outside:70,inside:100},high:{outside:90,inside:135}});
+export const ANTI_DOMAIN_COSTS = Object.freeze({simpleDomain:25,hollowWickerBasket:20,fallingBlossomEmotion:30,domainAmplificationPerRound:15,emptyBarrier:35});
+export const SUMMON_RULES = Object.freeze({activeCost:20,countSacrificeDefense:25,maxEternal:2});
+export const PHYSICAL_SELF_DAMAGE = Object.freeze([{min:1,max:3,damage:10},{min:4,max:6,damage:20},{min:7,max:9,damage:30}]);
+export const SUMMON_SELF_DAMAGE = Object.freeze([{min:1,max:4,damage:10},{min:5,max:7,damage:20},{min:8,max:9,damage:30}]);
+export function rctResult(roll){const n=Math.trunc(Number(roll));return RCT_TIERS.find(x=>n>=x.min&&n<=x.max)||null;}
+export function exposureTargetCount(roll){const n=Math.trunc(Number(roll));return EXPOSURE_TARGETS.find(x=>n>=x.min&&n<=x.max)?.targets||0;}
+export function domainRounds(roll){return Math.floor(Math.max(0,Math.trunc(Number(roll)))/2);}
+export function energyRankPenalty(np){const n=Math.max(0,Number(np)||0);return n<50?2:n<100?1:0;}
+export function debuffHpCost(missingNp){return Math.ceil(Math.max(0,Number(missingNp)||0)/5)*5;}
+export function poisonAttackPenalty(roll){return Math.floor(Math.max(0,Math.trunc(Number(roll)))/2);}
+export function specialDefenseResult(kind,roll,incomingDamage){const n=Math.trunc(Number(roll)),d=Math.max(0,Math.trunc(Number(incomingDamage)||0));if(!["absolute","reflect"].includes(kind)||n<1||n>4)return {defended:0,reflected:0,cost:0};const amount=n<=3?Math.ceil(d/2):d;return kind==="absolute"?{defended:amount,reflected:0,cost:n<=3?20:25}:{defended:0,reflected:amount,cost:n<=3?25:30};}
