@@ -412,6 +412,10 @@ export async function attack(ctx) {
   const tech = own(TECHNIQUES, key);
 
   if (!tech || !CHARACTERS[me.char_key]?.techs?.includes(key)) return say(ctx, 'این تکنیک مال تو نیست. لیست: /techs');
+  const exhausted = await getEffect(env, chat, uid, 'domain_exhausted');
+  if (exhausted && Number(tech.base) >= 35) {
+    return say(ctx, 'به‌دلیل پایان قلمرو، تا یک راند نمی‌توانی از حملات مرتبه مرگ به بالا استفاده کنی.');
+  }
 
   let targets = [];
 
@@ -598,6 +602,10 @@ export async function defend(ctx) {
   const def = own(DEFENSES, key);
 
   if (!def) return say(ctx, 'دفاع نامعتبر. لیست: /defenses');
+  const exhausted = await getEffect(ctx.env, ctx.chat, ctx.uid, 'domain_exhausted');
+  if (exhausted && ['reinforced', 'advanced', 'absolute', 'reflect'].includes(key)) {
+    return say(ctx, 'به‌دلیل پایان قلمرو، این سطح دفاع تا یک راند قابل استفاده نیست.');
+  }
 
   const me = await getPlayer(ctx.env, ctx.chat, ctx.uid);
 
