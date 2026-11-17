@@ -163,6 +163,9 @@ async function newgame(ctx) {
   await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
   await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
+  await run(env.DB, 'DELETE FROM game_effects WHERE chat_id=?', chat);
+  await run(env.DB, 'DELETE FROM summons WHERE chat_id=?', chat);
+  await run(env.DB, 'DELETE FROM game_round_state WHERE chat_id=?', chat);
   await run(env.DB, 'DELETE FROM battle_ui WHERE chat_id=?', chat);
 
   try {
@@ -227,6 +230,7 @@ async function begin(ctx) {
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
 
   await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
+  await run(env.DB, 'INSERT OR REPLACE INTO game_round_state (chat_id, round_no) VALUES (?,1)', chat);
   await ensureBattlePanel(env, chat);
 }
 
