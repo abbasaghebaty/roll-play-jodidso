@@ -4,7 +4,7 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, d4, defenseValue, aoeTargetCount } from './game/rules.js';
+import { rollAttack, techDamage, techniqueSelfDamage, npCost, d4, defenseValue, aoeTargetCount } from './game/rules.js';
 import { physicalSelfDamage, debuffHpCost, defenseResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -453,7 +453,7 @@ export async function attack(ctx) {
     // نتیجهٔ منفی، شدت شکست را به دمیج خودزنی تبدیل می‌کند؛
     // از همان فرمول دمیج تکنیک و قدرمطلق نتیجه استفاده می‌کنیم.
     const mirroredDamage = techDamage(tech, Math.abs(roll.result));
-    const selfCost = tech.free ? 0 : npCost(mirroredDamage, tech.kind);
+    const selfCost = (tech.free || tech.kind === 'pain' || tech.rank === 'pain' || tech.attackRank === 'pain') ? 0 : npCost(mirroredDamage, tech.kind);
     const energy = await payAttackEnergy(env, chat, me, selfCost);
     if (!energy.ok) {
       return sayThenRefresh(ctx, `${head}\nانرژی کافی نیست و HP هم برای دیباف به حداقل ۵ نمی‌رسد؛ حرکت انجام نشد.${await passTurn(ctx)}`);
@@ -488,7 +488,7 @@ export async function attack(ctx) {
   }
 
   const dmg = techDamage(tech, roll.result);
-  const cost = tech.free ? 0 : npCost(dmg, tech.kind);
+  const cost = (tech.free || tech.kind === 'pain' || tech.rank === 'pain' || tech.attackRank === 'pain') ? 0 : npCost(dmg, tech.kind);
 
   const energy = await payAttackEnergy(env, chat, me, cost);
   if (!energy.ok) {
@@ -592,9 +592,9 @@ export async function defend(ctx) {
     return sayThenRefresh(ctx, `🛡 ${esc(def.name)} با تاس ${roll} (هزینه ${sample.cost} NP)\n${out.join('\n')}${tail}`);
   }
 
-  const roll = d10();
-  const value = defenseValue(def, roll);
-  await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll})`);
+  // رنک‌های دفاعی و جاخالی مقدار ثابت دارند؛ برایشان تاس بی‌اثر نمی‌اندازیم.
+  const value = defenseValue(def, 0);
+  await resolveHits(ctx, me, value, `🛡 ${esc(def.name)}`);
 }
 
 async function help(ctx) {
