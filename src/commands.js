@@ -6,6 +6,7 @@ import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './game/rules.js';
 import { defenseResolution } from './game/hadi-rules.js';
+import { getEffect, setEffect } from './game/effects.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -429,8 +430,16 @@ export async function attack(ctx) {
 
   if (!targets.length) return say(ctx, 'هدفی نیست.');
 
+  const spamKey = `spam_attack:${key}`;
+  const spamState = await getEffect(env, chat, uid, spamKey);
+  if (spamState?.rounds_left > 0) {
+    return say(ctx, `این تکنیک در محدودیت اسپم است و ${spamState.rounds_left} راند دیگر قابل استفاده نیست.`);
+  }
+
   await clearResults(env, chat);
   const roll = rollAttack();
+  const spamRounds = tech.kind === 'undefendable' ? 2 : tech.kind === 'aoe' ? 3 : 4;
+  await setEffect(env, { chat, ownerId: uid, targetId: uid, type: spamKey, rounds: spamRounds, data: { technique: key, kind: tech.kind } });
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
 
   if (roll.result === 0) {
@@ -591,8 +600,11 @@ async function rct(ctx) {
   const waiting = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
   if (waiting?.n > 0) return say(ctx, 'ابتدا دفاع حمله‌ی قبلی باید تمام شود.');
 
+  const rctSpam = await getEffect(env, chat, uid, 'spam_rct');
+  if (rctSpam?.rounds_left > 0) return say(ctx, `ریورس کرس تکنیک تا ${rctSpam.rounds_left} راند دیگر در محدودیت اسپم است.`);
   const roll = d9();
   const result = reverseCursedResult(roll);
+  await setEffect(env, { chat, ownerId: uid, targetId: uid, type: 'spam_rct', rounds: 2 });
   if (!result) return say(ctx, 'نتیجه تاس برای ریورس نامعتبر است.');
   if (Number(me.np || 0) < result.np) {
     return sayThenRefresh(ctx, `🌀 ریورس کرس تکنیک: تاس ${roll}؛ ${result.np} NP لازم بود ولی ${me.np} داری. تکنیک اجرا نشد.${await passTurn(ctx)}`);
