@@ -1,7 +1,10 @@
-// دفاع‌ها (۷ رنک). مقدار دفاع = base + perDie × عدد تاس (۱ تا ۱۰)
-// فقط «جاخالی» عدد واقعی دارد (تاس ۱ = ۵ دمیج دفاع). بقیه‌ی ۶ رنک را از رفیقت بگیر و اضافه کن.
-export const DEFENSES = {
-  dodge: { name: 'جاخالی', base: 0, perDie: 5 },
-  // نمونه:
-  // block: { name: 'بلاک', base: 0, perDie: 0 },
-};
+// رنک‌های دفاع مطابق مرجع هادی.
+// سطح‌های عادی مقدار پایهٔ دفاع‌اند؛ مطلق و رفلکت تابع تاس و هزینهٔ مستقل دارند.
+export const DEFENSES = Object.freeze({
+  dodge: { name: 'جاخالی', base: 5, perDie: 0, kind: 'dodge', npCost: 0 },
+  simple: { name: 'ساده', base: 15, perDie: 0, kind: 'simple', npCost: null },
+  reinforced: { name: 'تقویت‌شده', base: 25, perDie: 0, kind: 'reinforced', npCost: null },
+  advanced: { name: 'پیشرفته', base: 30, perDie: 0, kind: 'advanced', npCost: null },
+  absolute: { name: 'مطلق', base: 0, perDie: 0, kind: 'absolute', npCost: 'roll' },
+  reflect: { name: 'رفلکت', base: 0, perDie: 0, kind: 'reflect', npCost: 'roll' },
+});
