@@ -98,11 +98,12 @@ async function payAttackEnergy(env, chat, player, cost) {
     if (paid?.meta?.changes === 0) return { ok: false, reason: 'race' };
     return { ok: true, npSpent: required, hpLost: 0 };
   }
-  if (player.hp < 5) return { ok: false, reason: 'minimum-hp' };
   const hpLost = debuffHpCost(required - player.np);
+  // قانون هادی: پس از پرداخت کمبود NP از HP، حداقل ۵ HP باید باقی بماند.
+  if (player.hp - hpLost < 5) return { ok: false, reason: 'minimum-hp' };
   const paid = await run(env.DB,
-    'UPDATE players SET np=0, hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN alive ELSE 0 END WHERE chat_id=? AND user_id=? AND np=?',
-    hpLost, hpLost, chat, player.user_id, player.np
+    'UPDATE players SET np=0, hp=hp-?, alive=CASE WHEN hp-?>0 THEN alive ELSE 0 END WHERE chat_id=? AND user_id=? AND np=? AND hp-?>=5',
+    hpLost, hpLost, chat, player.user_id, player.np, hpLost
   );
   if (paid?.meta?.changes === 0) return { ok: false, reason: 'race' };
   return { ok: true, npSpent: player.np, hpLost };
