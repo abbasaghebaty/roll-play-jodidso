@@ -146,7 +146,11 @@ export function techniqueSelfDamage(tech, negativeResult) {
 
 export function defenseValue(defense, roll) {
   if (!defense) return 0;
-  return Math.max(0, Number(defense.base) + Number(defense.perDie || 0) * Number(roll));
+  if (defense.kind === "absolute" || defense.kind === "reflect") return 0;
+  if (defense.kind === "rank" || Number.isFinite(Number(defense.value))) {
+    return Math.max(0, Math.trunc(Number(defense.value) || 0));
+  }
+  return Math.max(0, Number(defense.base || 0) + Number(defense.perDie || 0) * Number(roll));
 }
 
 
