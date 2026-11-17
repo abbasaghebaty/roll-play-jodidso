@@ -435,27 +435,37 @@ export async function attack(ctx) {
   }
 
   if (roll.result < 0) {
-    // سیل‌ها (به‌جز استثناهای شخصیتی) در شکست تاس خودزنی ندارند؛ فقط NP مصرف‌شده هدر می‌رود.
     const mirrored = techDamage(tech, Math.abs(roll.result));
-    const selfDmg = tech.kind === 'seal'
-      ? 0
-      : tech.kind === 'physical'
-        ? physicalSelfDamage(Math.abs(roll.result))
+    const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
+    const cost = painRank ? 0 : npCost(mirrored, tech.kind);
+    const deficit = Math.max(0, cost - Number(me.np || 0));
+    const hpPenalty = deficit > 0 && me.hp >= 5 ? Math.ceil(deficit / 5) * 5 : 0;
+    const exceptionalSealUser = ['naoya', 'naobito'].includes(String(me.char_key).toLowerCase());
+    const selfDmg = tech.kind === 'physical'
+      ? physicalSelfDamage(Math.abs(roll.result))
+      : tech.kind === 'seal' && !exceptionalSealUser
+        ? 0
         : selfDamageFromTechnique(mirrored);
-    const res = selfDmg ? await applyDamage(env, chat, me, selfDmg) : { hp: me.hp, dead: false };
 
+    // حتی در تاس منفی، هزینه انرژی قرینه تکنیک مصرف می‌شود؛ کمبود انرژی فقط دیباف حمله است.
+    await run(env.DB,
+      'UPDATE players SET np=MAX(0,np-?), hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN alive ELSE 0 END WHERE chat_id=? AND user_id=?',
+      Math.min(cost, Number(me.np || 0)), hpPenalty, hpPenalty, chat, uid
+    );
+    const res = selfDmg ? await applyDamage(env, chat, me, selfDmg) : { hp: Math.max(0, me.hp - hpPenalty), dead: me.hp - hpPenalty <= 0 };
+    const finalHp = res.hp;
+    const death = res.dead ? ' ☠️ حذف شدی.' : '';
     await logEvent(env, {
       chat, user: uid, kind: 'event',
       text: tech.kind === 'seal' ? 'seal-failed' : 'attack-self-damage',
-      data: { tech: key, roll, mirrored_damage: mirrored, dmg: selfDmg, hp_after: res.hp, dead: res.dead }
+      data: { tech: key, roll, mirrored_damage: mirrored, cost, np_deficit: deficit, hp_debuff: hpPenalty, dmg: selfDmg, hp_after: finalHp, dead: res.dead }
     });
 
     const tail = await afterResolve(ctx);
-    const description = tech.kind === 'seal'
-      ? 'مهروموم ناموفق بود؛ فقط انرژی آن هدر رفت.'
-      : `حمله شکست خورد و ${selfDmg} دمیج خودزنی دریافت کردی.`;
-    const death = res.dead ? ' ☠️ حذف شدی.' : '';
-    return sayThenRefresh(ctx, `${head}\n💥 ${description} ❤️ جان: ${res.hp}${death}${tail}`);
+    const description = tech.kind === 'seal' && !exceptionalSealUser
+      ? 'مهروموم ناموفق بود؛ فقط NP آن هدر رفت.'
+      : `حمله شکست خورد؛ ${selfDmg} دمیج خودزنی و ${hpPenalty} دمیج دیباف دریافت کردی.`;
+    return sayThenRefresh(ctx, `${head}\n💥 ${description} ❤️ جان: ${finalHp}${death}${tail}`);
   }
 
   const dmg = techDamage(tech, roll.result);
