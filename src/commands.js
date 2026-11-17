@@ -453,7 +453,7 @@ export async function attack(ctx) {
     const allowedTargets = aoeTargetCount(roll.pos);
     const selectedCount = targets.length;
     targets = targets.slice(0, allowedTargets);
-    if (!targets.length) return sayThenRefresh(ctx, `${head}\\nهدف معتبری برای حمله همگانی نیست.${await passTurn(ctx)}`);
+    if (!targets.length) return sayThenRefresh(ctx, `${head}\nهدف معتبری برای حمله همگانی نیست.${await passTurn(ctx)}`);
     if (selectedCount > allowedTargets) {
       // اگر بازیکن بیش از سقف تاس انتخاب کرده باشد، فقط به تعداد مجازِ انتخاب‌شده‌های اول حمله می‌رسد.
       ctx.aoeTrimmed = selectedCount - allowedTargets;
@@ -531,7 +531,8 @@ export async function attack(ctx) {
     }
   });
 
-  let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP؛ پرداخت NP: ${energy.npSpent}؛ دیباف HP: ${energy.hpLost})`;
+  let text = `${head}\n⚔️ ${esc(tech.name)} — نوع حمله: ${attackType}: ${dmg} دمیج (هزینه ${cost} NP؛ پرداخت NP: ${energy.npSpent}؛ دیباف HP: ${energy.hpLost})`;
+  if (ctx.aoeTrimmed) text += `\n🎯 به‌خاطر سقف تاس، ${ctx.aoeTrimmed} هدف از فهرست انتخابی خارج شد.`;
 
   if (tech.kind === 'undefendable') {
     for (const t of targets) {
