@@ -8,6 +8,7 @@ import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './gam
 import { defenseResolution, DOMAIN_BARRIERS, domainClashWinner } from './game/hadi-rules.js';
 import { getEffect, setEffect, removeEffect } from './game/effects.js';
 import { activateDomain } from './game/domains.js';
+import { activateSimpleDomain, activateHollowWickerBasket, reinforceHollowWickerBasket, activateFallingBlossom, activateDomainAmplification } from './game/anti-domain.js';
 import { isSealed } from './game/seals.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult, energyRankPenalty } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
@@ -630,6 +631,55 @@ export async function defend(ctx) {
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll}${specialCost ? `، هزینه ${specialCost} NP` : ''})`, special ? { kind: def.mode, roll } : null);
 }
 
+async function antiDomain(ctx) {
+  const { env, chat, uid } = ctx;
+  const me = await getPlayer(env, chat, uid);
+  if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
+  const action = String(ctx.args[0] || '').toLowerCase();
+
+  if (action === 'simple') {
+    const vow = String(ctx.args[1] || '').toLowerCase() === 'vow';
+    const kusakabe = String(me.char_key).toLowerCase() === 'kusakabe';
+    if (!vow && !kusakabe) return say(ctx, 'برای قلمروی نوین باید عهد الزام‌آور را با /antidomain simple vow اعلام کنی.');
+    if (Number(me.np || 0) < 25) return say(ctx, 'قلمروی نوین ۲۵ NP لازم دارد.');
+    const roll = d9();
+    const result = await activateSimpleDomain(env, { chat, userId: uid, positiveRoll: roll, bindingVow: vow, character: me.char_key });
+    await run(env.DB, 'UPDATE players SET np=np-25 WHERE chat_id=? AND user_id=?', chat, uid);
+    return say(ctx, `🛡 قلمروی نوین فعال شد؛ تاس ${roll}، مدت ${result.rounds} راند، هزینه ۲۵ NP.${vow ? ' عهد الزام‌آور فعال است؛ فقط دفاع و باف مجاز است.' : ''}`);
+  }
+
+  if (action === 'wicker') {
+    if (String(ctx.args[1] || '').toLowerCase() === 'reinforce') {
+      const game = await getGame(env, chat);
+      if (!game || game.status !== 'active' || game.turn_user !== uid) return say(ctx, 'تقویت سبد حصیری فقط در نوبت خودت انجام می‌شود.');
+      const result = await reinforceHollowWickerBasket(env, chat, uid);
+      return sayThenRefresh(ctx, `سبد حصیری تقویت شد؛ آستانه نابودی ${result.breakAtDamage} دمیج است.${await passTurn(ctx)}`);
+    }
+    if (Number(me.np || 0) < 20) return say(ctx, 'سبد حصیری توخالی ۲۰ NP لازم دارد.');
+    await activateHollowWickerBasket(env, { chat, userId: uid });
+    await run(env.DB, 'UPDATE players SET np=np-20 WHERE chat_id=? AND user_id=?', chat, uid);
+    return say(ctx, '🧺 سبد حصیری توخالی فعال شد؛ باید هندساین را حفظ کنی. حمله ممنوع است.');
+  }
+
+  if (action === 'blossom') {
+    if (Number(me.np || 0) < 30) return say(ctx, 'احساس شکوفه در حال سقوط ۳۰ NP لازم دارد.');
+    const result = await activateFallingBlossom(env, { chat, userId: uid });
+    await run(env.DB, 'UPDATE players SET np=np-30 WHERE chat_id=? AND user_id=?', chat, uid);
+    return say(ctx, `🌸 احساس شکوفه در حال سقوط فعال شد؛ آستانه غیرفعال‌شدن ${result.breakAtDamage} دمیج است.`);
+  }
+
+  if (action === 'amplification') {
+    const rounds = Math.max(1, Math.min(9, Number(ctx.args[1]) || 1));
+    const cost = rounds * 15;
+    if (Number(me.np || 0) < cost) return say(ctx, `تقویت قلمرو برای ${rounds} راند ${cost} NP لازم دارد.`);
+    await activateDomainAmplification(env, { chat, userId: uid, rounds });
+    await run(env.DB, 'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=?', cost, chat, uid);
+    return say(ctx, `🌀 تقویت قلمرو برای ${rounds} راند فعال شد؛ ${cost} NP مصرف شد.`);
+  }
+
+  return say(ctx, 'روش‌ها: /antidomain simple [vow] | wicker | wicker reinforce | blossom | amplification [rounds]');
+}
+
 async function domain(ctx) {
   const { env, chat, uid } = ctx;
   const game = await getGame(env, chat);
@@ -731,7 +781,7 @@ async function help(ctx) {
       '/attack کلید_تکنیک — (ریپلای روی هدف)',
       '/defend کلید_دفاع — دفاع',
       '/rct — تکنیک نفرینی معکوس',
-      '/domain low|high|open|incomplete — گسترش قلمرو',
+      '/domain low|high|open|incomplete — گسترش قلمرو',\n      '/antidomain simple|wicker|blossom|amplification — ضدقلمرو',
       '/nodefend — بدون دفاع',
       '',
       '<b>مستر</b>',
