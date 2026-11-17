@@ -113,7 +113,7 @@ export function defenseResult(kind, positiveRoll, incomingDamage) {
     const amount = roll <= 3 ? Math.ceil(damage / 2) : damage;
     return kind === 'absolute'
       ? { defended: amount, reflected: 0, cost: roll <= 3 ? 20 : 25 }
-      : { defended: 0, reflected: amount, cost: roll <= 3 ? 25 : 30 };
+      : { defended: amount, reflected: amount, cost: roll <= 3 ? 25 : 30 };
   }
   const minimum = DEFENSE_RANKS[kind];
   return { defended: minimum && roll > 0 ? minimum : 0, reflected: 0, cost: 0 };
