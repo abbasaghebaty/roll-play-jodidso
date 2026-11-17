@@ -94,3 +94,43 @@ CREATE TABLE IF NOT EXISTS battle_turn_ui (
   chat_id INTEGER PRIMARY KEY,
   turn_user INTEGER NOT NULL
 );
+
+
+-- ---------- وضعیت‌های ماندگار قوانین هادی ----------
+-- افکت‌ها به‌صورت داده ذخیره می‌شوند تا سیل، مود، سم، آنتی‌سیل،
+-- آنتی‌دامین و محدودیت‌های راندی پس از ری‌استارت Worker از بین نروند.
+CREATE TABLE IF NOT EXISTS game_effects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  owner_id INTEGER NOT NULL DEFAULT 0,
+  target_id INTEGER NOT NULL,
+  effect_type TEXT NOT NULL,
+  rounds_left INTEGER NOT NULL DEFAULT 0,
+  stacks INTEGER NOT NULL DEFAULT 1,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_game_effects_target ON game_effects(chat_id, target_id, effect_type);
+
+-- سامن‌های فعال و ابدی، با HP مستقل از صاحب سامن.
+CREATE TABLE IF NOT EXISTS summons (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  owner_id INTEGER NOT NULL,
+  summon_key TEXT NOT NULL,
+  summon_type TEXT NOT NULL,
+  hp INTEGER NOT NULL DEFAULT 0,
+  max_hp INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_summons_owner ON summons(chat_id, owner_id, active);
+
+-- شمارنده‌ی راند و داده‌های برخورد قلمروها، مستقل از پیام‌های تلگرام.
+CREATE TABLE IF NOT EXISTS game_round_state (
+  chat_id INTEGER PRIMARY KEY,
+  round_no INTEGER NOT NULL DEFAULT 1,
+  domain_clash_json TEXT NOT NULL DEFAULT '{}',
+  turn_meta_json TEXT NOT NULL DEFAULT '{}'
+);
