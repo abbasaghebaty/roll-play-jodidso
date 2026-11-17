@@ -511,6 +511,9 @@ export async function attack(ctx) {
     const refreshed = await getPlayer(env, chat, uid);
     me.hp = refreshed?.hp ?? Math.max(0, me.hp - hpPenalty);
     me.np = 0;
+    if (!refreshed?.alive || me.hp <= 0) {
+      return sayThenRefresh(ctx, `${head}\n💥 دیباف به دلیل کمبود انرژی باعث حذف تو شد؛ حمله اجرا نشد.${await passTurn(ctx)}`);
+    }
   } else {
     me.np = Math.max(0, me.np - cost);
   }
