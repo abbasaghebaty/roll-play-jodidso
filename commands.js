@@ -4,8 +4,8 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, defenseValue } from './game/rules.js';
-import { physicalSelfDamage, debuffHpCost } from './game/hadi-rules.js';
+import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, d4, defenseValue } from './game/rules.js';
+import { physicalSelfDamage, debuffHpCost, defenseResult } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -551,13 +551,41 @@ export async function defend(ctx) {
 
   if (!me || !me.alive) return say(ctx, 'بازیکن در بازی نیست.');
 
-  const pending = await all(ctx.env.DB, 'SELECT id FROM pending WHERE chat_id=? AND target_id=?', ctx.chat, me.user_id);
+  const pending = await all(ctx.env.DB, 'SELECT * FROM pending WHERE chat_id=? AND target_id=?', ctx.chat, me.user_id);
   if (!pending.length) return say(ctx, 'حمله‌ای منتظر دفاع تو نیست.');
 
   await clearResults(ctx.env, ctx.chat);
+
+  if (def.kind === 'absolute' || def.kind === 'reflect') {
+    const roll = d4();
+    const sample = defenseResult(def.kind, roll, pending[0].dmg);
+    if (me.np < sample.cost) return say(ctx, `برای ${esc(def.name)} به ${sample.cost} NP نیاز داری؛ موجودی: ${me.np}.`);
+    const paid = await run(ctx.env.DB,
+      'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?',
+      sample.cost, ctx.chat, me.user_id, sample.cost
+    );
+    if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نیست؛ دوباره وضعیت را بررسی کن.');
+
+    const out = [];
+    for (const hit of pending) {
+      const outcome = defenseResult(def.kind, roll, hit.dmg);
+      await run(ctx.env.DB, 'DELETE FROM pending WHERE id=?', hit.id);
+      const final = Math.max(0, hit.dmg - outcome.defended);
+      const targetResult = await applyDamage(ctx.env, ctx.chat, me, final);
+      let reflectedResult = null;
+      if (outcome.reflected > 0) {
+        const attacker = await getPlayer(ctx.env, ctx.chat, hit.attacker_id);
+        if (attacker?.alive) reflectedResult = await applyDamage(ctx.env, ctx.chat, attacker, outcome.reflected);
+      }
+      out.push(`${hit.dmg} دمیج: دفاع ${outcome.defended}، بازتاب ${outcome.reflected}، دریافتی ${final}. HP: ${targetResult.hp}${reflectedResult ? `؛ HP مهاجم: ${reflectedResult.hp}` : ''}`);
+    }
+    await clearDefensePrompts(ctx.env, ctx.chat, me.user_id);
+    const tail = await afterResolve(ctx);
+    return sayThenRefresh(ctx, `🛡 ${esc(def.name)} با تاس ${roll} (هزینه ${sample.cost} NP)\n${out.join('\n')}${tail}`);
+  }
+
   const roll = d10();
   const value = defenseValue(def, roll);
-
   await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll})`);
 }
 
