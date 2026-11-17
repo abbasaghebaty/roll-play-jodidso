@@ -364,7 +364,7 @@ async function techs(ctx) {
 
 async function defenses(ctx) {
   const lines = Object.entries(DEFENSES)
-    .map(([k, d]) => `<code>${k}</code> — ${esc(d.name)} (${d.kind === 'dodge' ? '۵ × تاس دفاع' : d.kind === 'absolute' ? 'دفاع مطلق؛ هزینه ۲۰/۲۵ NP' : d.kind === 'reflect' ? 'رفلکت؛ هزینه ۲۵/۳۰ NP' : d.value + ' دفاع ثابت'})`);
+    .map(([k, d]) => `<code>${k}</code> — ${esc(d.name)} (${d.kind === 'dodge' ? '۵ دفاع ثابت' : d.kind === 'absolute' ? 'دفاع مطلق؛ هزینه ۲۰/۲۵ NP' : d.kind === 'reflect' ? 'رفلکت؛ هزینه ۲۵/۳۰ NP' : d.value + ' دفاع ثابت'})`);
 
   await say(ctx, '🛡 دفاع‌ها:\n' + lines.join('\n'));
 }
