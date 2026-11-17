@@ -19,7 +19,7 @@ import { attackBaseDamage } from './rules.js';
 import { getGame, alivePlayers } from './engine.js';
 import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback, deleteMessage } from '../telegram.js';
 
-const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}`;
+const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}${Number(p.buff_hp) > 0 ? ` 🛡${p.buff_hp}` : ''}`;
 
 async function editOrSendKeyboard(env, chat, messageId, text, markup) {
   try {
@@ -105,7 +105,7 @@ async function showStatusAlert(query, env, chat, game) {
   const lines = players.map(p => {
     const mark = game.status === 'active' && p.user_id === game.turn_user ? '🎯' : (p.alive ? '🟢' : '💀');
     const who = CHARACTERS[p.char_key]?.name || p.char_key;
-    return `${mark} ${who} (${p.name.slice(0, 12)})  ❤️${p.hp} 🔮${p.np}`;
+    return `${mark} ${who} (${p.name.slice(0, 12)})  ❤️${p.hp} 🔮${p.np}${Number(p.buff_hp) > 0 ? ` 🛡${p.buff_hp}` : ''}`;
   });
   await answerCallback(env, query.id, fitAlert(lines.length ? lines : ['بازیکنی نیست.']), true);
 }
