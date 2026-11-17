@@ -463,7 +463,7 @@ export async function attack(ctx) {
     const deficit = Math.max(0, cost - Number(me.np || 0));
     const hpPenalty = deficit > 0 && me.hp >= 5 ? Math.ceil(deficit / 5) * 5 : 0;
     const exceptionalSealUser = ['naoya', 'naobito'].includes(String(me.char_key).toLowerCase());
-    const selfDmg = tech.kind === 'physical'
+    const selfDmg = tech.attackType === 'physical'
       ? physicalSelfDamage(Math.abs(roll.result))
       : tech.kind === 'seal' && !exceptionalSealUser
         ? 0
