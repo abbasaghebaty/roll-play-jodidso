@@ -60,6 +60,14 @@ export function d10() {
   return secureInt(10) + 1;
 }
 
+export function d4() {
+  return secureInt(4) + 1;
+}
+
+export function d9() {
+  return secureInt(9) + 1;
+}
+
 export function resultLabel(result) {
   return RESULT_LABELS.find(x => result >= x.min && result <= x.max)?.label || 'نامعتبر';
 }
