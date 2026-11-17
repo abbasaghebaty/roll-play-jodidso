@@ -269,6 +269,25 @@ export async function refreshBattlePanel(env, chat) {
   }
 }
 
+async function showAoeTargetMenu(env, chat, messageId, player, techKey, selectedSeats = []) {
+  const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
+  const eligible = players.filter(p => p.user_id !== player.user_id && (!player.team || p.team !== player.team));
+  const selected = new Set(selectedSeats.map(Number));
+  const rows = eligible.map(p => [{
+    text: `${selected.has(Number(p.seat)) ? '☑️' : '⬜'} ${p.name.slice(0, 24)}`,
+    callback_data: `rp:as:${techKey}:${[...selected].join(',')}:${p.seat}`,
+  }]);
+  rows.push([{ text: `✅ تأیید اهداف (${selected.size})`, callback_data: `rp:ac:${techKey}:${[...selected].join(',')}` }]);
+  rows.push([{ text: '↩️ بازگشت', callback_data: 'rp:go' }]);
+  return editOrSendKeyboard(
+    env,
+    chat,
+    messageId,
+    `🎯 ${mention(player)}، اهداف حمله همگانی را انتخاب کن. سقف نهایی با تاس مشخص می‌شود.`,
+    { inline_keyboard: rows }
+  );
+}
+
 async function showTechniqueMenu(query, env, chat, player) {
   const keys = CHARACTERS[player.char_key]?.techs || [];
 
@@ -304,7 +323,7 @@ export async function handleBattleCallback(query, env, handlers) {
 
   if (!game) return answerCallback(env, query.id, 'بازی‌ای پیدا نشد.');
 
-  const [, action, key, targetRaw] = data.split(':');
+  const [, action, key, targetRaw, extraRaw] = data.split(':');
   const targetId = Number(targetRaw);
 
   const ctx = {
@@ -390,7 +409,12 @@ export async function handleBattleCallback(query, env, handlers) {
       return answerCallback(env, query.id, 'این تکنیک برای تو قابل استفاده نیست.', true);
     }
 
-    if (tech.kind === 'aoe' || tech.kind === 'undefendable') {
+    if (tech.kind === 'aoe') {
+      await answerCallback(env, query.id, 'انتخاب اهداف همگانی');
+      return showAoeTargetMenu(env, chat, m.message_id, player, key, []);
+    }
+
+    if (tech.kind === 'undefendable') {
       await answerCallback(env, query.id, 'در حال اجرای حمله…');
 
       ctx.args = [key];
@@ -430,6 +454,55 @@ export async function handleBattleCallback(query, env, handlers) {
       { inline_keyboard: rows }
     );
 
+    return;
+  }
+
+  if (action === 'as') {
+    if (game.status !== 'active' || game.turn_user !== uid) {
+      return answerCallback(env, query.id, 'نوبت تو نیست.', true);
+    }
+    const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, uid);
+    const tech = TECHNIQUES[key];
+    if (!player || !tech || tech.kind !== 'aoe' || !CHARACTERS[player.char_key]?.techs?.includes(key)) {
+      return answerCallback(env, query.id, 'این انتخاب معتبر نیست.', true);
+    }
+    const selected = (targetRaw || '').split(',').filter(Boolean).map(Number).filter(Number.isSafeInteger);
+    const clickedSeat = Number(extraRaw);
+    const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
+    const clicked = players.find(p => Number(p.seat) === clickedSeat && p.user_id !== uid && (!player.team || p.team !== player.team));
+    if (!clicked) return answerCallback(env, query.id, 'هدف انتخابی معتبر نیست.', true);
+    const next = new Set(selected);
+    if (next.has(clickedSeat)) next.delete(clickedSeat);
+    else {
+      if (next.size >= 5) return answerCallback(env, query.id, 'حداکثر ۵ هدف می‌توانی انتخاب کنی.', true);
+      next.add(clickedSeat);
+    }
+    await answerCallback(env, query.id, 'فهرست اهداف به‌روزرسانی شد');
+    return showAoeTargetMenu(env, chat, m.message_id, player, key, [...next]);
+  }
+
+  if (action === 'ac') {
+    if (game.status !== 'active' || game.turn_user !== uid) {
+      return answerCallback(env, query.id, 'نوبت تو نیست.', true);
+    }
+    const player = await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=? AND alive=1', chat, uid);
+    const tech = TECHNIQUES[key];
+    const seats = (targetRaw || '').split(',').filter(Boolean).map(Number).filter(Number.isSafeInteger);
+    if (!player || !tech || tech.kind !== 'aoe' || !CHARACTERS[player.char_key]?.techs?.includes(key) || !seats.length) {
+      return answerCallback(env, query.id, 'حداقل یک هدف معتبر انتخاب کن.', true);
+    }
+    const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
+    const selected = players.filter(p => seats.includes(Number(p.seat)) && p.user_id !== uid && (!player.team || p.team !== player.team));
+    if (selected.length !== new Set(seats).size) {
+      return answerCallback(env, query.id, 'یکی از اهداف دیگر معتبر نیست.', true);
+    }
+    ctx.args = [key, selected.map(p => p.user_id).join(',')];
+    await answerCallback(env, query.id, 'در حال اجرای حمله همگانی…');
+    ctx.msgId = null;
+    const before = { turnUser: game.turn_user, pending: await pendingCount(env, chat) };
+    await handlers.attack(ctx);
+    await settleMenuMessage(env, chat, m.message_id, before);
+    await refreshBattlePanel(env, chat);
     return;
   }
 
