@@ -78,6 +78,8 @@ async function afterResolve(ctx) {
     return `\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`;
   }
 
+  const current = await getGame(env, chat);
+  if (current?.turn_user) await run(env.DB, 'UPDATE players SET turns_taken=COALESCE(turns_taken,0)+1 WHERE chat_id=? AND user_id=?', chat, current.turn_user);
   const next = await advanceTurn(env, chat);
 
   // پس از پایان دفاع، اعلان نوبت بعدی باید حتماً دوباره ساخته شود؛
@@ -110,8 +112,9 @@ async function payAttackEnergy(env, chat, player, cost) {
 }
 
 async function passTurn(ctx) {
-  // شمارندهٔ نوبت‌های شخصی برای اجرای cooldownهای چنددوری هادی.
-  await run(ctx.env.DB, 'UPDATE players SET turns_taken=COALESCE(turns_taken,0)+1 WHERE chat_id=? AND user_id=?', ctx.chat, ctx.uid);
+  // شمارندهٔ نوبت بازیکنی که واقعاً نوبتش در حال پایان است.
+  const current = await getGame(ctx.env, ctx.chat);
+  if (current?.turn_user) await run(ctx.env.DB, 'UPDATE players SET turns_taken=COALESCE(turns_taken,0)+1 WHERE chat_id=? AND user_id=?', ctx.chat, current.turn_user);
   const next = await advanceTurn(ctx.env, ctx.chat);
   // اعلان نوبت قبلی دیگر معتبر نیست؛ پنل بازیکن بعدی باید دوباره ساخته شود.
   await run(ctx.env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', ctx.chat);
@@ -291,7 +294,7 @@ async function boost(ctx) {
   if (!amount) return say(ctx, 'نوع باف نامعتبر است. گزینه‌ها: simple, super, reinforced, special');
 
   // باف به‌صورت سپر جدا از HP نگهداری می‌شود؛ فقط باف ساده رایگان است.
-  if ((Number(me.turns_taken) || 0) - (Number(me.last_buff_turn) || -1000) < 3) return say(ctx, 'باف هنوز در cooldown است؛ باید ۳ دور از استفادهٔ قبلی بگذرد.');
+  if ((Number(me.turns_taken) || 0) - (me.last_buff_turn == null ? -1000 : Number(me.last_buff_turn)) < 3) return say(ctx, 'باف هنوز در cooldown است؛ باید ۳ دور از استفادهٔ قبلی بگذرد.');
   const cost = rank === 'simple' ? 0 : amount;
   if (me.np < cost) return say(ctx, `برای این باف ${cost} NP لازم داری؛ موجودی: ${me.np}.`);
 
@@ -315,7 +318,7 @@ async function rct(ctx) {
   if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
 
   // RCT از تاس مثبت وزنی ۱ تا ۹ استفاده می‌کند؛ بازهٔ ۱۰ در این قانون تعریف نشده است.
-  if ((Number(me.turns_taken) || 0) - (Number(me.last_rct_turn) || -1000) < 2) return say(ctx, 'RCT هنوز در cooldown است؛ باید ۲ دور از استفادهٔ قبلی بگذرد.');
+  if ((Number(me.turns_taken) || 0) - (me.last_rct_turn == null ? -1000 : Number(me.last_rct_turn)) < 2) return say(ctx, 'RCT هنوز در cooldown است؛ باید ۲ دور از استفادهٔ قبلی بگذرد.');
   const roll = weightedDie(POSITIVE_DICE_WEIGHTS);
   const result = rctResult(Math.min(9, roll));
   if (!result) return say(ctx, 'نتیجهٔ تاس برای RCT معتبر نبود.');
