@@ -62,7 +62,6 @@ export const EXPOSURE_TARGETS = Object.freeze([
 export const SELF_DAMAGE_PHYSICAL = Object.freeze([
   { min: 1, max: 3, damage: 10 },
   { min: 4, max: 6, damage: 20 },
-  { min: 7, max: 9, damage: 30 },
 ]);
 
 export const ETERNAL_SUMMON_SELF_DAMAGE = Object.freeze([
