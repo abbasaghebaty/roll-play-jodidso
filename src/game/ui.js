@@ -492,7 +492,7 @@ export async function handleBattleCallback(query, env, handlers) {
       return answerCallback(env, query.id, 'حداقل یک هدف معتبر انتخاب کن.', true);
     }
     const players = await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat', chat);
-    const selected = players.filter(p => seats.includes(Number(p.seat)) && p.user_id !== uid && (!player.team || p.team !== player.team));
+    const selected = seats.map(seat => players.find(p => Number(p.seat) === seat && p.user_id !== uid && (!player.team || p.team !== player.team))).filter(Boolean);
     if (selected.length !== new Set(seats).size) {
       return answerCallback(env, query.id, 'یکی از اهداف دیگر معتبر نیست.', true);
     }
