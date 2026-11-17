@@ -50,9 +50,12 @@ async function sendTurnPrompt(env, chat, player) {
 
 function defensePromptView(target, attacker, dmg) {
   const text = `🛡 ${mention(target)}، ${mention(attacker)} حمله کرد و ${dmg} دمیج به تو می‌رسد!\n\nیکی از دفاع‌ها را انتخاب کن:`;
-  const rows = Object.entries(DEFENSES).map(([key, def]) => [
-    { text: `🛡 ${def.name}`, callback_data: `rp:d:${key}:${target.user_id}` },
-  ]);
+  const rows = Object.entries(DEFENSES).map(([key, def]) => {
+    const detail = def.kind === 'dodge' ? '۵' :
+      def.kind === 'absolute' ? '۲۰/۲۵ NP' :
+      def.kind === 'reflect' ? '۲۵/۳۰ NP' : String(def.value);
+    return [{ text: `🛡 ${def.name} (${detail})`, callback_data: `rp:d:${key}:${target.user_id}` }];
+  });
   rows.push([{ text: '⏭️ بدون دفاع', callback_data: `rp:n:x:${target.user_id}` }]);
   return { text, markup: { inline_keyboard: rows } };
 }
