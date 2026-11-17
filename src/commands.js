@@ -469,6 +469,10 @@ export async function attack(ctx) {
     me.np = Math.max(0, me.np - cost);
   }
   const painBuff = painRank ? painRankNpBuff(dmg) : 0;
+  if (painBuff > 0) {
+    await run(env.DB, 'UPDATE players SET np=np+? WHERE chat_id=? AND user_id=?', painBuff, chat, uid);
+    me.np += painBuff;
+  }
 
   await logEvent(env, {
     chat,
