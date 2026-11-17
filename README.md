@@ -113,6 +113,8 @@
 
 ```bash
 npx wrangler d1 execute anime-rpg --remote --file=./schema.sql
+# برای دیتابیس‌هایی که قبلاً ساخته شده‌اند، این مهاجرت را فقط یک‌بار اجرا کن:
+npx wrangler d1 execute anime-rpg --remote --file=./migrations/0002_buff_rct.sql
 npx wrangler deploy
 npx wrangler tail
 ```
