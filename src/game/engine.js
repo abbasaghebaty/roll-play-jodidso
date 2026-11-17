@@ -42,12 +42,13 @@ export async function advanceTurn(env, chat) {
 // تا اگر دو دمیج هم‌زمان رسید یکی روی دیگری بازنویسی نشود. دمیج منفی/نامعتبر = صفر.
 export async function applyDamage(env, chat, target, dmg) {
   const d = Math.max(0, Math.floor(Number(dmg)) || 0);
+  // سپر باف پیش از HP مصرف می‌شود و برای همهٔ مسیرهای دمیج یکسان است.
   await run(
     env.DB,
-    'UPDATE players SET hp = MAX(0, hp - ?), alive = CASE WHEN alive = 1 AND hp - ? > 0 THEN 1 ELSE 0 END WHERE chat_id=? AND user_id=?',
-    d, d, chat, target.user_id
+    'UPDATE players SET buff_hp=MAX(0,COALESCE(buff_hp,0)-?), hp=MAX(0,hp-MAX(0,?-COALESCE(buff_hp,0))), alive=CASE WHEN alive=1 AND hp-MAX(0,?-COALESCE(buff_hp,0))>0 THEN 1 ELSE 0 END WHERE chat_id=? AND user_id=?',
+    d, d, d, chat, target.user_id
   );
-  const row = await first(env.DB, 'SELECT hp, alive FROM players WHERE chat_id=? AND user_id=?', chat, target.user_id);
-  if (!row) return { hp: 0, dead: true };
-  return { hp: row.hp, dead: !row.alive };
+  const row = await first(env.DB, 'SELECT hp, alive, COALESCE(buff_hp,0) AS buff_hp FROM players WHERE chat_id=? AND user_id=?', chat, target.user_id);
+  if (!row) return { hp: 0, buffHp: 0, dead: true };
+  return { hp: row.hp, buffHp: row.buff_hp, dead: !row.alive };
 }
