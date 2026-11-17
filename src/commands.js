@@ -7,7 +7,7 @@ import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, d4, d9, defenseValue } from './game/rules.js';
 import { defenseResolution } from './game/hadi-rules.js';
 import { getEffect, setEffect } from './game/effects.js';
-import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult } from './game/hadi-rules.js';
+import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff, reverseCursedResult, energyRankPenalty } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -447,8 +447,17 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
   }
 
+  const energyPenalty = energyRankPenalty(me.np);
+  const poisonState = await getEffect(env, chat, uid, 'poison');
+  const immuneToPoison = ['yuji', 'yuji_normal', 'yuji_modulo', 'sukuna', 'yuji_sukuna', 'meguna', 'heian_sukuna'].includes(String(me.char_key).toLowerCase());
+  const poisonPenalty = poisonState && !immuneToPoison ? 1 : 0;
+  const effectiveRankPenalty = energyPenalty + poisonPenalty;
+  const effectiveTech = effectiveRankPenalty > 0
+    ? { ...tech, base: Math.max(0, Number(tech.base) - effectiveRankPenalty * 5) }
+    : tech;
+
   if (roll.result < 0) {
-    const mirrored = techDamage(tech, Math.abs(roll.result));
+    const mirrored = techDamage(effectiveTech, Math.abs(roll.result));
     const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
     const cost = painRank ? 0 : npCost(mirrored, tech.kind);
     const deficit = Math.max(0, cost - Number(me.np || 0));
@@ -471,7 +480,7 @@ export async function attack(ctx) {
     await logEvent(env, {
       chat, user: uid, kind: 'event',
       text: tech.kind === 'seal' ? 'seal-failed' : 'attack-self-damage',
-      data: { tech: key, roll, mirrored_damage: mirrored, cost, np_deficit: deficit, hp_debuff: hpPenalty, dmg: selfDmg, hp_after: finalHp, dead: res.dead }
+      data: { tech: key, roll, mirrored_damage: mirrored, cost, np_deficit: deficit, hp_debuff: hpPenalty, energy_rank_penalty: energyPenalty, poison_rank_penalty: poisonPenalty, dmg: selfDmg, hp_after: finalHp, dead: res.dead }
     });
 
     const tail = await afterResolve(ctx);
@@ -481,7 +490,7 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n💥 ${description} ❤️ جان: ${finalHp}${death}${tail}`);
   }
 
-  const dmg = techDamage(tech, roll.result);
+  const dmg = techDamage(effectiveTech, roll.result);
   const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
   const cost = painRank ? 0 : npCost(dmg, tech.kind);
   const deficit = Math.max(0, cost - Number(me.np || 0));
@@ -527,6 +536,18 @@ export async function attack(ctx) {
   });
 
   let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
+
+  if (tech.poison) {
+    const poisonRounds = Math.floor(Math.max(0, roll.result) / 2);
+    if (poisonRounds > 0) {
+      for (const target of targets) {
+        const targetKey = String(target.char_key || '').toLowerCase();
+        if (!['yuji', 'yuji_normal', 'yuji_modulo', 'sukuna', 'yuji_sukuna', 'meguna', 'heian_sukuna'].includes(targetKey)) {
+          await setEffect(env, { chat, ownerId: uid, targetId: target.user_id, type: 'poison', rounds: poisonRounds, data: { sourceTechnique: key } });
+        }
+      }
+    }
+  }
 
   if (tech.kind === 'undefendable') {
     for (const t of targets) {
