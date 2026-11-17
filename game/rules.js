@@ -94,6 +94,10 @@ export function d10() {
   return secureInt(10) + 1;
 }
 
+export function d4() {
+  return secureInt(4) + 1;
+}
+
 // ---------- برچسب وضعیت نتیجه ----------
 export function resultLabel(result) {
   const r = RESULT_LABELS.find((x) => result >= x.min && result <= x.max);
@@ -142,5 +146,5 @@ export function techniqueSelfDamage(tech, negativeResult) {
 
 export function defenseValue(defense, roll) {
   if (!defense) return 0;
-  return Math.max(0, Number(defense.base) + Number(defense.perDie) * Number(roll));
+  return Math.max(0, Number(defense.base) + Number(defense.perDie || 0) * Number(roll));
 }
