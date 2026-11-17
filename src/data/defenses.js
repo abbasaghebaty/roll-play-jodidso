@@ -1,10 +1,10 @@
 // رنک‌های دفاع مطابق مرجع هادی.
-// سطح‌های عادی مقدار پایهٔ دفاع‌اند؛ مطلق و رفلکت تابع تاس و هزینهٔ مستقل دارند.
-export const DEFENSES = Object.freeze({
-  dodge: { name: 'جاخالی', base: 5, perDie: 0, kind: 'dodge', npCost: 0 },
-  simple: { name: 'ساده', base: 15, perDie: 0, kind: 'simple', npCost: null },
-  reinforced: { name: 'تقویت‌شده', base: 25, perDie: 0, kind: 'reinforced', npCost: null },
-  advanced: { name: 'پیشرفته', base: 30, perDie: 0, kind: 'advanced', npCost: null },
-  absolute: { name: 'مطلق', base: 0, perDie: 0, kind: 'absolute', npCost: 'roll' },
-  reflect: { name: 'رفلکت', base: 0, perDie: 0, kind: 'reflect', npCost: 'roll' },
-});
+// جاخالی مقدار وابسته به تاس دارد؛ سایر دفاع‌های عادی مقدار ثابت دارند.
+export const DEFENSES = {
+  dodge: { name: 'جاخالی', kind: 'dodge', base: 0, perDie: 5 },
+  simple: { name: 'دفاع ساده', kind: 'rank', value: 15 },
+  reinforced: { name: 'دفاع تقویت‌شده', kind: 'rank', value: 25 },
+  advanced: { name: 'دفاع پیشرفته', kind: 'rank', value: 30 },
+  absolute: { name: 'دفاع مطلق', kind: 'absolute' },
+  reflect: { name: 'رفلکت', kind: 'reflect' },
+};
