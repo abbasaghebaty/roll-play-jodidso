@@ -31,6 +31,13 @@ export async function tickEffects(env, chat, targetId) {
     if (effect.rounds_left <= 0) continue;
     if (effect.rounds_left === 1) {
       await run(env.DB, 'DELETE FROM game_effects WHERE id=?', effect.id);
+      if (effect.effect_type === 'domain') {
+        await setEffect(env, {
+          chat, ownerId: effect.owner_id, targetId,
+          type: 'domain_exhausted', rounds: 1,
+          data: { blocksDeathRankAttacks: true, blocksAdvancedDefenses: true }
+        });
+      }
     } else {
       await run(env.DB, 'UPDATE game_effects SET rounds_left=rounds_left-1 WHERE id=?', effect.id);
     }
