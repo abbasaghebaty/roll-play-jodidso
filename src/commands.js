@@ -852,6 +852,7 @@ const HANDLERS = {
   attack,
   defend,
   domain,
+  antidomain: antiDomain,
   rct,
   nodefend,
   status,
