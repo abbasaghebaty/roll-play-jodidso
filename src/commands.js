@@ -762,6 +762,8 @@ const HANDLERS = {
   defenses,
   attack,
   defend,
+  domain,
+  rct,
   nodefend,
   status,
   buff,
