@@ -613,8 +613,9 @@ export async function attack(ctx) {
 
   await sayFlow(ctx, text);
 
-  for (const t of targets) {
-    const ok = await sendDefensePrompt(env, chat, t, me, dmg);
+  for (const t of pendingTargets) {
+    const adjusted = await first(env.DB, 'SELECT dmg FROM pending WHERE chat_id=? AND target_id=? AND attacker_id=? ORDER BY id DESC LIMIT 1', chat, t.user_id, uid);
+    const ok = await sendDefensePrompt(env, chat, t, me, adjusted?.dmg ?? dmg);
 
     if (!ok) {
       await say(ctx, `⚠️ ارسال دکمه‌های دفاع ${mention(t)} ناموفق بود. با <code>/defend dodge</code> یا /nodefend دفاع کن.`);
