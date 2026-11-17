@@ -5,7 +5,7 @@
 // ============================================================================
 
 // ---------- ثابت‌های قوانین ----------
-export const STEP = 5;                 // هر پلهٔ نتیجهٔ تاس = +۵ دمیج
+export const STEP = 5;                 // هر مثبت اضافه پس از مثبت ۱، پنج دمیج اضافه می‌کند
 export const AOE_EXTRA = 10;           // هزینهٔ اضافهٔ NP برای حملهٔ ناحیه‌ای
 export const UNDEFENDABLE_EXTRA = 5;   // هزینهٔ اضافهٔ NP برای حملهٔ غیرقابل‌دفاع
 
@@ -94,6 +94,10 @@ export function d10() {
   return secureInt(10) + 1;
 }
 
+export function d4() {
+  return secureInt(4) + 1;
+}
+
 // ---------- برچسب وضعیت نتیجه ----------
 export function resultLabel(result) {
   const r = RESULT_LABELS.find((x) => result >= x.min && result <= x.max);
@@ -121,17 +125,26 @@ export function rollAttack() {
 // ---------- دمیج، هزینهٔ NP و دفاع (بدون تغییر نسبت به نسخهٔ قبل) ----------
 export function techDamage(tech, result) {
   if (!tech || !Number.isFinite(Number(tech.base)) || !Number.isFinite(Number(result))) return 0;
-  return Math.max(0, Number(tech.base) + STEP * (Number(result) - 1));
+  const roll = Math.trunc(Number(result));
+  if (roll < 1 || roll > 9) return 0;
+  return Math.max(0, Number(tech.base) + STEP * (roll - 1));
 }
 
 export function npCost(dmg, kind = "normal") {
-  const base = Math.floor(Math.max(0, Number(dmg) || 0) / 2 / 5) * 5 + 5;
-  if (kind === "aoe") return base + AOE_EXTRA;
-  if (kind === "undefendable") return base + UNDEFENDABLE_EXTRA;
-  return base;
+  const half = Math.floor(Math.max(0, Number(dmg) || 0) / 2);
+  if (kind === "aoe") return half + AOE_EXTRA;
+  if (kind === "undefendable") return half + UNDEFENDABLE_EXTRA;
+  if (kind === "exposure") return 5;
+  if (kind === "pain") return 0;
+  return half;
+}
+
+export function techniqueSelfDamage(tech, negativeResult) {
+  const mirrored = techDamage(tech, Math.abs(Math.trunc(Number(negativeResult))));
+  return Math.floor(mirrored / 2);
 }
 
 export function defenseValue(defense, roll) {
   if (!defense) return 0;
-  return Math.max(0, Number(defense.base) + Number(defense.perDie) * Number(roll));
+  return Math.max(0, Number(defense.base) + Number(defense.perDie || 0) * Number(roll));
 }
