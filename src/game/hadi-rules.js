@@ -143,11 +143,11 @@ export function energyRankPenalty(np) {
 }
 
 export function domainRounds(positiveResult) {
-  return Math.max(0, Math.floor(Number(positiveResult) || 0) / 2 | 0);
+  return Math.ceil(Math.max(0, Number(positiveResult) || 0) / 2);
 }
 
 export function sealRoundsDefended(positiveResult) {
-  return Math.floor(Math.max(0, Number(positiveResult) || 0) / 2);
+  return Math.ceil(Math.max(0, Number(positiveResult) || 0) / 2);
 }
 
 export function simpleDomainDamageLimit(bindingVow = true) {
