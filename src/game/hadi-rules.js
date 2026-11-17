@@ -161,9 +161,10 @@ export function domainBarrierBreakDamage(barrier, fromOutside) {
 }
 
 export function domainClashWinner(a, b) {
-  const rank = { low: 1, incomplete: 2, high: 3, open: 3 };
-  const ar = rank[a] || 0;
-  const br = rank[b] || 0;
+  const rank = { low: 1, high: 2, open: 2 };
+  if (!(a in rank) || !(b in rank)) return 'unresolved';
+  const ar = rank[a];
+  const br = rank[b];
   if (ar === br) return 'tie';
   return ar > br ? 'a' : 'b';
 }
