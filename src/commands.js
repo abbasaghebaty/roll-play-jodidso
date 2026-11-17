@@ -493,8 +493,12 @@ export async function attack(ctx) {
   }
 
   const dmg = techDamage(effectiveTech, roll.result);
+  const domainEffect = await getEffect(env, chat, uid, 'domain');
+  const domainData = domainEffect ? JSON.parse(domainEffect.data_json || '{}') : null;
+  const domainGuaranteed = Boolean(domainEffect && domainData?.guaranteedHit);
+  const effectiveCostKind = domainGuaranteed && tech.kind === 'normal' ? 'undefendable' : tech.kind;
   const painRank = tech.rank === 'pain' || Number(tech.base) === 5;
-  const cost = painRank ? 0 : npCost(dmg, tech.kind);
+  const cost = painRank ? 0 : npCost(dmg, effectiveCostKind);
   const npBefore = Number(me.np || 0);
   const deficit = Math.max(0, cost - npBefore);
   const hpPenalty = deficit > 0 ? Math.ceil(deficit / 5) * 5 : 0;
@@ -555,10 +559,10 @@ export async function attack(ctx) {
     }
   }
 
-  if (tech.kind === 'undefendable') {
+  if (tech.kind === 'undefendable' || domainGuaranteed) {
     for (const t of targets) {
       const res = await applyDamage(env, chat, t, dmg);
-      text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (غیرقابل‌دفاع). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
+      text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (${domainGuaranteed ? 'ضربه تضمینی قلمرو' : 'غیرقابل‌دفاع'}). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
     }
 
     text += await afterResolve(ctx);
