@@ -688,6 +688,7 @@ async function antiDomain(ctx) {
 
   if (action === 'wicker') {
     if (String(ctx.args[1] || '').toLowerCase() === 'reinforce') {
+      if (!(await getEffect(env, chat, uid, 'anti_domain_wicker'))) return say(ctx, 'سبد حصیری توخالی فعال نیست.');
       const game = await getGame(env, chat);
       if (!game || game.status !== 'active' || game.turn_user !== uid) return say(ctx, 'تقویت سبد حصیری فقط در نوبت خودت انجام می‌شود.');
       const result = await reinforceHollowWickerBasket(env, chat, uid);
