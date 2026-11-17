@@ -420,7 +420,7 @@ export async function attack(ctx) {
     const eligible = everyone.filter((p) => p.user_id !== uid && (!me.team || p.team !== me.team));
     if (ctx.args[1]) {
       const requested = [...new Set(ctx.args[1].split(',').map(x => Number(x)).filter(Number.isSafeInteger))];
-      targets = eligible.filter(p => requested.includes(Number(p.user_id)));
+      targets = requested.map(id => eligible.find(p => Number(p.user_id) === id)).filter(Boolean);
       if (!requested.length || targets.length !== requested.length) {
         return say(ctx, 'فهرست اهداف همگانی نامعتبر است؛ فقط بازیکنان زنده و غیرهم‌تیمی را انتخاب کن.');
       }
