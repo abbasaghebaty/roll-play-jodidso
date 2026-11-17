@@ -14,13 +14,13 @@ export async function activateSimpleDomain(env, { chat, userId, positiveRoll, bi
   return { rounds, npCost: ANTI_DOMAIN.simpleDomain.np, breakAtDamage: simpleDomainDamageLimit(bindingVow), canAttack: unrestricted };
 }
 
-export async function activateHollowWickerBasket(env, { chat, userId, positiveRoll = 9 }) {
-  const rounds = domainRounds(positiveRoll);
+export async function activateHollowWickerBasket(env, { chat, userId }) {
+  const rounds = 0;
   await setEffect(env, {
-    chat, ownerId: userId, targetId: userId, type: 'anti_domain_wicker', rounds: Math.max(1, rounds),
+    chat, ownerId: userId, targetId: userId, type: 'anti_domain_wicker', rounds,
     data: { handsLocked: true, canAttack: false, canDefend: true, canBuff: true, reinforced: false, breakAtDamage: 50 }
   });
-  return { rounds: Math.max(1, rounds), npCost: ANTI_DOMAIN.hollowWickerBasket.np };
+  return { rounds, npCost: ANTI_DOMAIN.hollowWickerBasket.np };
 }
 
 export async function reinforceHollowWickerBasket(env, chat, userId) {
@@ -33,8 +33,8 @@ export async function reinforceHollowWickerBasket(env, chat, userId) {
   return { breakAtDamage: 75, consumesTurn: true };
 }
 
-export async function activateFallingBlossom(env, { chat, userId, positiveRoll = 9 }) {
-  const rounds = Math.max(1, domainRounds(positiveRoll));
+export async function activateFallingBlossom(env, { chat, userId }) {
+  const rounds = 0;
   await setEffect(env, {
     chat, ownerId: userId, targetId: userId, type: 'anti_domain_blossom', rounds,
     data: { automaticDomainDamageDefense: true, breakAtDamage: 65 }
