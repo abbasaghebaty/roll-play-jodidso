@@ -110,6 +110,8 @@ async function payAttackEnergy(env, chat, player, cost) {
 }
 
 async function passTurn(ctx) {
+  // شمارندهٔ نوبت‌های شخصی برای اجرای cooldownهای چنددوری هادی.
+  await run(ctx.env.DB, 'UPDATE players SET turns_taken=COALESCE(turns_taken,0)+1 WHERE chat_id=? AND user_id=?', ctx.chat, ctx.uid);
   const next = await advanceTurn(ctx.env, ctx.chat);
   // اعلان نوبت قبلی دیگر معتبر نیست؛ پنل بازیکن بعدی باید دوباره ساخته شود.
   await run(ctx.env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', ctx.chat);
@@ -289,11 +291,12 @@ async function boost(ctx) {
   if (!amount) return say(ctx, 'نوع باف نامعتبر است. گزینه‌ها: simple, super, reinforced, special');
 
   // باف به‌صورت سپر جدا از HP نگهداری می‌شود؛ فقط باف ساده رایگان است.
+  if ((Number(me.turns_taken) || 0) - (Number(me.last_buff_turn) || -1000) < 3) return say(ctx, 'باف هنوز در cooldown است؛ باید ۳ دور از استفادهٔ قبلی بگذرد.');
   const cost = rank === 'simple' ? 0 : amount;
   if (me.np < cost) return say(ctx, `برای این باف ${cost} NP لازم داری؛ موجودی: ${me.np}.`);
 
   const paid = await run(env.DB,
-    'UPDATE players SET np=np-?, buff_hp=COALESCE(buff_hp,0)+?, buff_rank=CASE WHEN CASE buff_rank WHEN \'simple\' THEN 1 WHEN \'super\' THEN 2 WHEN \'reinforced\' THEN 2 WHEN \'special\' THEN 3 ELSE 0 END < ? THEN ? ELSE buff_rank END WHERE chat_id=? AND user_id=? AND alive=1 AND np>=?',
+    'UPDATE players SET np=np-?, buff_hp=COALESCE(buff_hp,0)+?, buff_rank=CASE WHEN CASE buff_rank WHEN \'simple\' THEN 1 WHEN \'super\' THEN 2 WHEN \'reinforced\' THEN 2 WHEN \'special\' THEN 3 ELSE 0 END < ? THEN ? ELSE buff_rank END, last_buff_turn=COALESCE(turns_taken,0) WHERE chat_id=? AND user_id=? AND alive=1 AND np>=?',
     cost, amount, ({ simple: 1, super: 2, reinforced: 2, special: 3 })[rank], rank, chat, uid, cost
   );
   if (paid?.meta?.changes === 0) return say(ctx, 'پرداخت باف انجام نشد؛ وضعیت NP یا نوبت را دوباره بررسی کن.');
@@ -312,12 +315,13 @@ async function rct(ctx) {
   if (!me?.alive) return say(ctx, 'تو در بازی نیستی یا حذف شده‌ای.');
 
   // RCT از تاس مثبت وزنی ۱ تا ۹ استفاده می‌کند؛ بازهٔ ۱۰ در این قانون تعریف نشده است.
+  if ((Number(me.turns_taken) || 0) - (Number(me.last_rct_turn) || -1000) < 2) return say(ctx, 'RCT هنوز در cooldown است؛ باید ۲ دور از استفادهٔ قبلی بگذرد.');
   const roll = weightedDie(POSITIVE_DICE_WEIGHTS);
   const result = rctResult(Math.min(9, roll));
   if (!result) return say(ctx, 'نتیجهٔ تاس برای RCT معتبر نبود.');
 
   const updated = await run(env.DB,
-    'UPDATE players SET hp=MIN(max_hp,hp+?), np=MIN(max_np,np+?) WHERE chat_id=? AND user_id=? AND alive=1',
+    'UPDATE players SET hp=MIN(max_hp,hp+?), np=MIN(max_np,np+?), last_rct_turn=COALESCE(turns_taken,0) WHERE chat_id=? AND user_id=? AND alive=1',
     result.hp, result.np, chat, uid
   );
   if (updated?.meta?.changes === 0) return say(ctx, 'درمان انجام نشد؛ وضعیت بازیکن را بررسی کن.');
