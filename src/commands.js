@@ -578,7 +578,17 @@ export async function attack(ctx) {
     const targetWicker = await getEffect(env, chat, target.user_id, 'anti_domain_wicker');
     const targetBlossom = await getEffect(env, chat, target.user_id, 'anti_domain_blossom');
     let blossomBroken = false;
+    let simpleBroken = false;
+    let wickerBroken = false;
 
+    if (domainGuaranteed && targetSimple) {
+      const result = await damageAntiDomain(env, chat, target.user_id, 'anti_domain_simple', dmg);
+      simpleBroken = Boolean(result.broken);
+    }
+    if (domainGuaranteed && targetWicker) {
+      const result = await damageAntiDomain(env, chat, target.user_id, 'anti_domain_wicker', dmg);
+      wickerBroken = Boolean(result.broken);
+    }
     if (domainGuaranteed && targetBlossom) {
       const blossomResult = await damageAntiDomain(env, chat, target.user_id, 'anti_domain_blossom', dmg);
       if (!blossomResult.broken) {
@@ -589,7 +599,7 @@ export async function attack(ctx) {
       text += '\n🌸 احساس شکوفه در حال سقوط شکست؛ اثر تضمینی قلمرو دوباره فعال شد.';
     }
 
-    const guaranteedForTarget = domainGuaranteed && !targetAmp && !targetSimple && !targetWicker && (!targetBlossom || blossomBroken);
+    const guaranteedForTarget = domainGuaranteed && !targetAmp && (!targetSimple || simpleBroken) && (!targetWicker || wickerBroken) && (!targetBlossom || blossomBroken);
     const undefendableForTarget = tech.kind === 'undefendable' && !targetAmp;
     if (guaranteedForTarget || undefendableForTarget) {
       const res = await applyDamage(env, chat, target, dmg);
