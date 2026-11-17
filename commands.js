@@ -5,7 +5,7 @@ import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
 import { rollAttack, techDamage, techniqueSelfDamage, npCost, d10, defenseValue } from './game/rules.js';
-import { physicalSelfDamage } from './game/hadi-rules.js';
+import { physicalSelfDamage, debuffHpCost } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
 import { logEvent } from './log.js';
@@ -86,6 +86,26 @@ async function afterResolve(ctx) {
 
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
+}
+
+async function payAttackEnergy(env, chat, player, cost) {
+  const required = Math.max(0, Math.floor(Number(cost) || 0));
+  if (player.np >= required) {
+    const paid = await run(env.DB,
+      'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?',
+      required, chat, player.user_id, required
+    );
+    if (paid?.meta?.changes === 0) return { ok: false, reason: 'race' };
+    return { ok: true, npSpent: required, hpLost: 0 };
+  }
+  if (player.hp < 5) return { ok: false, reason: 'minimum-hp' };
+  const hpLost = debuffHpCost(required - player.np);
+  const paid = await run(env.DB,
+    'UPDATE players SET np=0, hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN alive ELSE 0 END WHERE chat_id=? AND user_id=? AND np=?',
+    hpLost, hpLost, chat, player.user_id, player.np
+  );
+  if (paid?.meta?.changes === 0) return { ok: false, reason: 'race' };
+  return { ok: true, npSpent: player.np, hpLost };
 }
 
 async function passTurn(ctx) {
@@ -424,6 +444,12 @@ export async function attack(ctx) {
   if (roll.result < 0) {
     // نتیجهٔ منفی، شدت شکست را به دمیج خودزنی تبدیل می‌کند؛
     // از همان فرمول دمیج تکنیک و قدرمطلق نتیجه استفاده می‌کنیم.
+    const mirroredDamage = techDamage(tech, Math.abs(roll.result));
+    const selfCost = tech.free ? 0 : npCost(mirroredDamage, tech.kind);
+    const energy = await payAttackEnergy(env, chat, me, selfCost);
+    if (!energy.ok) {
+      return sayThenRefresh(ctx, `${head}\nانرژی کافی نیست و HP هم برای دیباف به حداقل ۵ نمی‌رسد؛ حرکت انجام نشد.${await passTurn(ctx)}`);
+    }
     const selfDmg = tech.physical ? physicalSelfDamage(roll.result) : techniqueSelfDamage(tech, roll.result);
     const res = await applyDamage(env, chat, me, selfDmg);
 
@@ -437,6 +463,9 @@ export async function attack(ctx) {
         roll,
         self_damage_rule: tech.physical ? 'physical-tier' : 'half-mirrored-technique',
         dmg: selfDmg,
+        np_cost: selfCost,
+        np_spent: energy.npSpent,
+        debuff_hp_cost: energy.hpLost,
         hp_after: res.hp,
         dead: res.dead
       }
@@ -446,7 +475,7 @@ export async function attack(ctx) {
     const death = res.dead ? ' ☠️ خودزنی باعث حذف تو شد.' : '';
     return sayThenRefresh(
       ctx,
-      `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.hp}${death}${tail}`
+      `${head}\n💥 ${roll.label}؛ ${selfDmg} دمیج خودزنی و ${selfCost} هزینهٔ انرژی (پرداخت NP: ${energy.npSpent}، دیباف HP: ${energy.hpLost}). ❤️ جان: ${res.hp}${death}${tail}`
     );
   }
 
@@ -458,13 +487,11 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
 
-  const paid = await run(
-    env.DB,
-    'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?',
-    cost, chat, uid, cost
-  );
-
-  if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
+  const energy = await payAttackEnergy(env, chat, me, cost);
+  if (!energy.ok) {
+    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-insufficient-energy', data: { tech: key, cost, np: me.np, hp: me.hp, reason: energy.reason } });
+    return sayThenRefresh(ctx, `${head}\nNP کافی نیست و شرط حداقل ۵ HP برای دیباف برقرار نیست؛ حمله انجام نشد.${await passTurn(ctx)}`);
+  }
 
   await logEvent(env, {
     chat,
@@ -478,11 +505,13 @@ export async function attack(ctx) {
       dmg,
       cost,
       np_before: me.np,
+      np_spent: energy.npSpent,
+      debuff_hp_cost: energy.hpLost,
       targets: targets.map((t) => t.user_id)
     }
   });
 
-  let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
+  let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP؛ پرداخت NP: ${energy.npSpent}؛ دیباف HP: ${energy.hpLost})`;
 
   if (tech.kind === 'undefendable') {
     for (const t of targets) {
