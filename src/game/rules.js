@@ -124,7 +124,7 @@ export function rollAttack() {
 
 // ---------- دمیج، هزینهٔ NP و دفاع (بدون تغییر نسبت به نسخهٔ قبل) ----------
 export function techDamage(tech, result) {
-  if (!tech || !Number.isFinite(Number(tech.base)) || !Number.isFinite(Number(result))) return 0;
+  if (!tech || !Number.isFinite(Number(result)) || !Number.isFinite(Number(attackBaseDamage(tech)))) return 0;
   const roll = Math.trunc(Number(result));
   if (roll < 1 || roll > 9) return 0;
   return Math.max(0, attackBaseDamage(tech) + STEP * (roll - 1));
