@@ -482,11 +482,6 @@ export async function attack(ctx) {
   const dmg = techDamage(tech, roll.result);
   const cost = tech.free ? 0 : npCost(dmg, tech.kind);
 
-  if (me.np < cost) {
-    await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
-    return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
-  }
-
   const energy = await payAttackEnergy(env, chat, me, cost);
   if (!energy.ok) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-insufficient-energy', data: { tech: key, cost, np: me.np, hp: me.hp, reason: energy.reason } });
