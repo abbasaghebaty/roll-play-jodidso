@@ -4,7 +4,8 @@ import { all, first, run } from './db.js';
 import { CHARACTERS } from './data/characters.js';
 import { TECHNIQUES } from './data/techniques.js';
 import { DEFENSES } from './data/defenses.js';
-import { rollAttack, techDamage, npCost, d10, defenseValue } from './game/rules.js';
+import { rollAttack, techDamage, npCost, d10, d4, defenseValue } from './game/rules.js';
+import { defenseResolution } from './game/hadi-rules.js';
 import { selfDamageFromTechnique, physicalSelfDamage, painRankNpBuff } from './game/hadi-rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage } from './game/engine.js';
 import { say, note, sayFlow, isMaster, resolveId, own } from './util.js';
@@ -96,7 +97,7 @@ async function passTurn(ctx) {
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 
-async function resolveHits(ctx, target, defValue, label) {
+async function resolveHits(ctx, target, defValue, label, special = null) {
   const { env, chat } = ctx;
   const rows = await all(env.DB, 'SELECT * FROM pending WHERE chat_id=? AND target_id=?', chat, target.user_id);
 
@@ -109,11 +110,22 @@ async function resolveHits(ctx, target, defValue, label) {
     const del = await run(env.DB, 'DELETE FROM pending WHERE id=?', r.id);
     if (del?.meta?.changes === 0) continue;
 
-    const final = Math.max(0, r.dmg - defValue);
+    const specialResult = special ? defenseResolution(special.kind, special.roll, r.dmg) : null;
+    const defended = specialResult ? specialResult.defended : defValue;
+    const reflected = specialResult ? specialResult.reflected : 0;
+    const final = Math.max(0, r.dmg - defended);
     const res = await applyDamage(env, chat, target, final);
     target.hp = res.hp;
 
-    out.push(`${label}: دفاع ${defValue} از ${r.dmg} دمیج ← ${final} دمیج خورد.\n❤️ جان ${mention(target)}: ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`);
+    if (reflected > 0) {
+      const attacker = await getPlayer(env, chat, r.attacker_id);
+      if (attacker?.alive) {
+        const reflectedResult = await applyDamage(env, chat, attacker, reflected);
+        out.push(`↩️ ${reflected} دمیج به مهاجم بازگشت؛ HP مهاجم: ${reflectedResult.hp}`);
+      }
+    }
+
+    out.push(`${label}: دفاع ${defended} از ${r.dmg} دمیج؛ ${final} دمیج دریافت شد.\n❤️ جان ${mention(target)}: ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`);
 
     await logEvent(env, {
       chat,
@@ -124,7 +136,8 @@ async function resolveHits(ctx, target, defValue, label) {
         attacker: r.attacker_id,
         tech: r.tech,
         dmg: r.dmg,
-        defense: defValue,
+        defense: defended,
+        reflected,
         final,
         hp_after: res.hp,
         dead: res.dead
@@ -539,10 +552,19 @@ export async function defend(ctx) {
   if (!pending.length) return say(ctx, 'حمله‌ای منتظر دفاع تو نیست.');
 
   await clearResults(ctx.env, ctx.chat);
-  const roll = d10();
-  const value = defenseValue(def, roll);
+  const special = def.mode === 'absolute' || def.mode === 'reflect';
+  const roll = special ? d4() : d10();
+  const value = special ? 0 : defenseValue(def, roll);
+  const specialCost = special ? defenseResolution(def.mode, roll, 0).cost : 0;
 
-  await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll})`);
+  if (specialCost > 0 && Number(me.np || 0) < specialCost) {
+    return say(ctx, `برای این دفاع ${specialCost} NP لازم داری؛ موجودی تو ${me.np} است.`);
+  }
+  if (specialCost > 0) {
+    await run(ctx.env.DB, 'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?', specialCost, ctx.chat, me.user_id, specialCost);
+  }
+
+  await resolveHits(ctx, me, value, `🛡 ${esc(def.name)} (تاس ${roll}${specialCost ? `، هزینه ${specialCost} NP` : ''})`, special ? { kind: def.mode, roll } : null);
 }
 
 async function help(ctx) {
