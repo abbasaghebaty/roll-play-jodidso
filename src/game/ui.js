@@ -15,6 +15,7 @@ import { all, first, run } from '../db.js';
 import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
+import { attackBaseDamage } from './rules.js';
 import { getGame, alivePlayers } from './engine.js';
 import { mention, esc, sendKeyboard, editMessage, pinMessage, answerCallback, deleteMessage } from '../telegram.js';
 
@@ -117,7 +118,7 @@ async function showTechniquesAlert(query, env, chat, uid) {
   const lines = [`📜 تکنیک‌های ${CHARACTERS[player.char_key]?.name || player.char_key}:`];
   for (const k of keys) {
     const t = TECHNIQUES[k];
-    lines.push(`• ${t.name} — پایه ${t.base}${t.free ? ' (بدون NP)' : ''}${KIND_LABEL[t.kind] || ''}`);
+    lines.push(`• ${t.name} — پایه ${attackBaseDamage(t)}${t.free || t.rank === 'pain' || t.attackRank === 'pain' ? ' (بدون NP)' : ''}${KIND_LABEL[t.kind] || ''}`);
   }
   await answerCallback(env, query.id, fitAlert(lines), true);
 }
