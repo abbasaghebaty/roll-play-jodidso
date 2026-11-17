@@ -417,7 +417,16 @@ export async function attack(ctx) {
 
   if (tech.kind === 'aoe') {
     const everyone = await alivePlayers(env, chat);
-    targets = everyone.filter((p) => p.user_id !== uid && (!me.team || p.team !== me.team));
+    const eligible = everyone.filter((p) => p.user_id !== uid && (!me.team || p.team !== me.team));
+    if (ctx.args[1]) {
+      const requested = [...new Set(ctx.args[1].split(',').map(x => Number(x)).filter(Number.isSafeInteger))];
+      targets = eligible.filter(p => requested.includes(Number(p.user_id)));
+      if (!requested.length || targets.length !== requested.length) {
+        return say(ctx, 'فهرست اهداف همگانی نامعتبر است؛ فقط بازیکنان زنده و غیرهم‌تیمی را انتخاب کن.');
+      }
+    } else {
+      targets = eligible;
+    }
   } else {
     const tid = resolveId(ctx, ctx.args[1]);
 
@@ -436,12 +445,19 @@ export async function attack(ctx) {
   await clearResults(env, chat);
   const roll = rollAttack();
   const head = `🎲 ${mention(me)}: مثبت ${roll.pos} − منفی ${roll.neg} = ${roll.result}`;
+  const attackType = tech.physical ? 'فیزیکی' : 'پرتابه‌ای';
 
   if (tech.kind === 'aoe' && roll.result > 0) {
     // تعداد اهداف همگانی از روی تاس مثبت خام تعیین می‌شود؛
     // اگر حریف کمتری در بازی باشد، فقط همان تعداد موجود هدف قرار می‌گیرند.
-    targets = targets.slice(0, aoeTargetCount(roll.pos));
+    const allowedTargets = aoeTargetCount(roll.pos);
+    const selectedCount = targets.length;
+    targets = targets.slice(0, allowedTargets);
     if (!targets.length) return sayThenRefresh(ctx, `${head}\\nهدف معتبری برای حمله همگانی نیست.${await passTurn(ctx)}`);
+    if (selectedCount > allowedTargets) {
+      // اگر بازیکن بیش از سقف تاس انتخاب کرده باشد، فقط به تعداد مجازِ انتخاب‌شده‌های اول حمله می‌رسد.
+      ctx.aoeTrimmed = selectedCount - allowedTargets;
+    }
   }
 
   if (roll.result === 0) {
@@ -504,6 +520,7 @@ export async function attack(ctx) {
     data: {
       tech: key,
       kind: tech.kind,
+      attack_type: tech.physical ? 'physical' : 'projectile',
       roll,
       dmg,
       cost,
