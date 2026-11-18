@@ -37,7 +37,7 @@
 ## وضعیت اعتبارسنجی
 
 - تست‌های واحد جدید به `tests/rules.test.mjs` اضافه شده‌اند.
-- GitHub Actions برای Commit `20d02c5` موفق است: Syntax تمام فایل‌های JS و ۱۶ تست (۰ شکست).
+- GitHub Actions برای Commit `20d02c5` موفق است: Syntax تمام فایل‌های JS و ۱۸ تست (۰ شکست).
 - تست SQLite برای SQL و تراکنش batch در `tests/atomic-combat.test.mjs` اجرا شده؛ این تست جایگزین اجرای Production روی Cloudflare D1 نیست.
 - این شاخه هنوز Pull Request ندارد و برای ادغام آماده اعلام نمی‌شود.
 

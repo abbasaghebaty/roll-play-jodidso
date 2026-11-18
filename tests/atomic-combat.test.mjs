@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { resolvePendingDefense, commitAttack } from '../src/game/engine.js';
 
 // SQLite-backed D1 adapter: exercises the SQL and ordered transactional batch contract.
@@ -159,4 +162,42 @@ test('direct attack holds one per-chat turn claim until the turn advances', asyn
   const next = await advanceTurn({ DB }, 10, 1);
   assert.equal(next.user_id, 2);
   assert.equal((await DB.prepare('SELECT turn_claim FROM combat_actions WHERE operation_id=?').bind('update:direct-one').first()).turn_claim, 0);
+});
+
+
+test('a pending attack, its defense and turn release form one consistent combat lifecycle', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  const attack = await commitAttack({ DB }, {
+    chat: 10, actorId: 1, actorTeam: '', cost: 15, damage: 30,
+    targetIds: [2], tech: 'defendable', operationId: 'update:lifecycle',
+  });
+  assert.equal(attack.applied, true);
+  assert.equal((await DB.prepare('SELECT turn_claim FROM combat_actions WHERE operation_id=?').bind('update:lifecycle').first()).turn_claim, 1);
+  const defense = await resolvePendingDefense({ DB }, 10, 2, 10, 'callback:lifecycle-defense');
+  assert.equal(defense.applied, true);
+  assert.equal(defense.player.hp, 80);
+  const { advanceTurn } = await import('../src/game/engine.js');
+  const next = await advanceTurn({ DB }, 10, 1);
+  assert.equal(next.user_id, 2);
+  assert.equal((await DB.prepare('SELECT turn_claim FROM combat_actions WHERE operation_id=?').bind('update:lifecycle').first()).turn_claim, 0);
+});
+
+test('ordered D1 migrations add the ledger and turn claim without changing existing player/game data', async () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`
+    CREATE TABLE games(chat_id INTEGER PRIMARY KEY, status TEXT, turn_user INTEGER);
+    CREATE TABLE players(chat_id INTEGER, user_id INTEGER, hp INTEGER, PRIMARY KEY(chat_id,user_id));
+    INSERT INTO games VALUES(77,'active',9);
+    INSERT INTO players VALUES(77,9,123);
+  `);
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  db.exec(await readFile(resolve(root, 'migrations/0001_combat_actions.sql'), 'utf8'));
+  db.exec(await readFile(resolve(root, 'migrations/0002_combat_turn_claim.sql'), 'utf8'));
+  const columns = db.prepare('PRAGMA table_info(combat_actions)').all().map((row) => row.name);
+  assert.ok(columns.includes('operation_id'));
+  assert.ok(columns.includes('turn_claim'));
+  assert.equal(db.prepare('SELECT hp FROM players WHERE chat_id=77 AND user_id=9').get().hp, 123);
+  assert.equal(db.prepare('SELECT turn_user FROM games WHERE chat_id=77').get().turn_user, 9);
+  assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_combat_actions_active_turn'").get());
 });
