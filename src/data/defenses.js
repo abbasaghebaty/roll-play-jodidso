@@ -1,7 +1,13 @@
-// دفاع‌ها (۷ رنک). مقدار دفاع = base + perDie × عدد تاس (۱ تا ۱۰)
-// فقط «جاخالی» عدد واقعی دارد (تاس ۱ = ۵ دمیج دفاع). بقیه‌ی ۶ رنک را از رفیقت بگیر و اضافه کن.
+// دفاع‌ها؛ مقادیر رتبه از جدول canonical قوانین می‌آیند.
+import { DEFENSE_RANKS } from '../game/rules/ranks/defense.js';
+
+// مقدار دفاع فعلی = base + perDie × تاس d10.
+// فقط جاخالی در داده‌های زنده تعریف شده؛ سه سطح دیگر تا تعیین رفتارشان اضافه نمی‌شوند.
 export const DEFENSES = {
-  dodge: { name: 'جاخالی', base: 0, perDie: 5 },
-  // نمونه:
-  // block: { name: 'بلاک', base: 0, perDie: 0 },
+  dodge: {
+    name: 'جاخالی',
+    rank: 'dodge',
+    base: 0,
+    perDie: DEFENSE_RANKS.dodge.baseValue,
+  },
 };
