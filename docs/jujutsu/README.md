@@ -67,6 +67,11 @@
 | [باف‌ها](04-buffs.md) | ۳.6 | جدول پایه در `src/game/rules/ranks/buffs.js`؛ اجرای رفتاری هنوز نیازمند طراحی و پیاده‌سازی است |
 | [سیل و مهروموم](05-seal.md) | ۳.12 | ماژول اجرایی پیشنهادی: `src/game/rules/seal.js`؛ هنوز ساخته/پیاده‌سازی نشده است |
 | [خودزنی](06-self-damage.md) | ۳.9، ۳.10 | `src/commands/combat.js` و `src/game/rules/attack.js`؛ قواعد توسعه‌یافته هنوز کامل نیستند |
+| [سامن‌ها](07-summons.md) | ۳.11 | ماژول‌های برنامه‌ریزی‌شده: `src/game/rules/summons.js`، `src/data/summons.js` و توسعه‌ی `src/game/engine.js` |
+| [وضعیت‌های جانبی](08-status-effects.md) | ۳.13، ۳.14، ۳.16، ۳.19، ۳.20 | ماژول اجرایی پیشنهادی: `src/game/rules/status-effects.js`؛ هنوز پیاده‌سازی نشده است |
+| [گسترش و برخورد قلمرو](09-domain.md) | ۳.21، ۳.22، ۳.23، ۳.24 | ماژول اجرایی پیشنهادی: `src/game/rules/domain.js`؛ هنوز پیاده‌سازی نشده است |
+| [ضدقلمرو](10-anti-domain.md) | ۳.25 | ماژول اجرایی پیشنهادی: `src/game/rules/anti-domain.js`؛ هنوز پیاده‌سازی نشده است |
+| [تکنیک نفرین‌شده معکوس](11-reversal.md) | ۳.7 | ماژول اجرایی پیشنهادی: `src/game/rules/reversal.js`؛ هنوز پیاده‌سازی نشده است |
 
 ## نقشه معماری اجرایی
 
