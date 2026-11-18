@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TECHNIQUES } from '../src/data/techniques.js';
+import { DEFENSES } from '../src/data/defenses.js';
 import {
   ATTACK_RANKS,
   DEFENSE_RANKS,
@@ -63,6 +64,13 @@ test('attack damage and NP cost preserve the existing formulas', () => {
   assert.equal(npCost(20), 15);
   assert.equal(npCost(20, 'aoe'), 25);
   assert.equal(npCost(20, 'undefendable'), 20);
+});
+
+test('live dodge defense reads its value from the canonical defense rank', () => {
+  assert.equal(DEFENSES.dodge.rank, 'dodge');
+  assert.equal(DEFENSES.dodge.perDie, DEFENSE_RANKS.dodge.baseValue);
+  assert.equal(defenseValue(DEFENSES.dodge, 1), 5);
+  assert.equal(defenseValue(DEFENSES.dodge, 10), 50);
 });
 
 test('legacy defense calculation preserves its base-plus-roll formula', () => {
