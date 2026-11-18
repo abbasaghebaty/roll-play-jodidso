@@ -31,7 +31,8 @@ test('dice tables remain valid weighted distributions', () => {
   assert.equal(Object.values(POSITIVE_DICE_WEIGHTS).reduce((a, b) => a + b, 0), 100);
   for (let i = 0; i < 100; i += 1) {
     assert.ok(Number.isInteger(weightedDie()));
-    assert.ok(d10() >= 1 && d10() <= 10);
+    const defenseRoll = d10();
+    assert.ok(defenseRoll >= 1 && defenseRoll <= 10);
     const roll = rollAttack();
     assert.ok(roll.pos >= 1 && roll.pos <= 10);
     assert.ok(roll.neg >= 1 && roll.neg <= 10);
