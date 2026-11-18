@@ -9,23 +9,43 @@
 ├── README.md
 ├── wrangler.toml
 ├── schema.sql
+├── docs/
+│   └── jujutsu/
+│       ├── README.md
+│       ├── DECISIONS.md
+│       └── 01..11-topic-files.md
 └── src/
     ├── index.js
-    ├── commands.js
-    ├── db.js
-    ├── telegram.js
-    ├── util.js
-    ├── log.js
-    ├── report.js
-    ├── testmode.js
+    ├── commands.js              # backward-compatible entry point
+    ├── commands/
+    │   ├── index.js
+    │   ├── admin.js
+    │   ├── players.js
+    │   ├── combat.js
+    │   └── helpers.js
     ├── data/
     │   ├── characters.js
     │   ├── techniques.js
     │   └── defenses.js
     └── game/
         ├── engine.js
-        ├── rules.js
-        ├── ui.js
+        ├── rules.js              # backward-compatible entry point
+        ├── rules/
+        │   ├── index.js
+        │   ├── constants.js
+        │   ├── dice.js
+        │   ├── attack.js
+        │   ├── defense.js
+        │   └── ranks/
+        │       ├── index.js
+        │       ├── attack.js
+        │       ├── defense.js
+        │       └── buffs.js
+        ├── ui.js                 # backward-compatible entry point
+        ├── ui/
+        │   ├── prompts.js
+        │   ├── panel.js
+        │   └── callbacks.js
         └── cleanup.js
 ```
 
@@ -36,7 +56,7 @@
 | فایل | مسئولیت |
 |---|---|
 | `src/index.js` | ورودی اصلی Worker؛ دریافت وبهوک تلگرام، بررسی تنظیمات و در صورت تنظیم بودن، اعتبارسنجی `WEBHOOK_SECRET`. جلوگیری از پردازش دوباره‌ی آپدیت‌ها و مدیریت خطاهای کلی |
-| `src/commands.js` | مرکز دستورهای ربات؛ ساخت context پیام، اتصال دستورها به handlerها و اجرای عملیات بازی مثل ثبت‌نام، شروع/پایان، حمله، دفاع، تیم و وضعیت بازیکنان |
+| `src/commands/index.js` | دریافت آپدیت، ساخت context و اتصال نام دستورها به handlerهای تخصصی در پوشه `src/commands/` |
 | `src/util.js` | توابع مشترک دستورها: ارسال پاسخ، پیام نتیجه، بررسی مستر/کارمند، اعتبارسنجی کلیدهای آبجکت و تشخیص شناسه‌ی بازیکن/دامی |
 | `src/db.js` | wrapperهای ساده‌ی D1 برای اجرای کوئری‌ها: `all`، `first` و `run` |
 
@@ -66,16 +86,16 @@
 | فایل | مسئولیت |
 |---|---|
 | `src/game/engine.js` | عملیات اصلی وضعیت بازی در D1: دریافت بازی/بازیکن‌ها، فهرست زنده‌ها، تشخیص برنده، جابه‌جایی نوبت و اعمال اتمیک دمیج |
-| `src/game/rules.js` | قوانین عددی مستقل از تلگرام و دیتابیس: وزن و تولید تاس، نتیجه‌ی حمله، برچسب نتیجه، جدول رنک‌های پایه حمله، دفاع و باف، فرمول دمیج، هزینه‌ی NP و مقدار دفاع |
-| `src/game/ui.js` | رابط تعاملی گروه با پیشوند callback برابر `rp:`؛ پنل ثابت لابی/نبرد، منوی نوبت، انتخاب تکنیک و هدف، پیام دفاع، نمایش وضعیت و پردازش کلیک دکمه‌ها |
+| `src/game/rules/` | قوانین خالص و مستقل از Telegram/D1؛ تاس، فرمول حمله/دفاع، هزینه NP و فایل جدا برای هر جدول رنک. `src/game/rules.js` فقط barrel سازگاری است |
+| `src/game/ui/` | رابط گروه تفکیک‌شده به پیام‌ها و promptها، پنل ثابت و callbackها. `src/game/ui.js` مسیر سازگاری exportهاست |
 | `src/game/cleanup.js` | مدیریت پیام‌های موقت ربات؛ نگه‌داشتن نتیجه‌ی اخیر، حذف پیام‌های قدیمی، چرخش پیام نوبت و پاک‌سازی پیام‌های ثبت‌شده در `bot_msgs` |
 
 ## جریان اجرای معمول
 
 1. تلگرام آپدیت را به Worker می‌فرستد.
 2. `index.js` آپدیت را دریافت و از تکراری نبودنش اطمینان حاصل می‌کند.
-3. پیام‌های دستوری به `commands.js` می‌رسند.
-4. handler مربوطه از داده‌های `src/data/`، قوانین `rules.js` و عملیات وضعیت `engine.js` استفاده می‌کند.
+3. پیام‌های دستوری به `commands/index.js` می‌رسند و به handler مناسب در `admin.js`، `players.js` یا `combat.js` سپرده می‌شوند.
+4. handler مربوطه از داده‌های `src/data/`، محاسبات `game/rules/` و عملیات وضعیت `engine.js` استفاده می‌کند.
 5. وضعیت بازی و بازیکنان در D1 ذخیره می‌شود؛ رابط دکمه‌ای از طریق `ui.js` و ارتباط تلگرام از طریق `telegram.js` مدیریت می‌شود.
 6. رویدادها و خطاها در صورت امکان در `logs` ثبت می‌شوند و گزارش‌های دستی در `reports` قرار می‌گیرند.
 
@@ -124,11 +144,11 @@ npx wrangler tail
 برای شروع هر تغییر، فقط از فایل مرتبط شروع کن:
 
 - **شخصیت جدید یا HP/NP پایه:** `src/data/characters.js`
-- **تکنیک، قدرت، نوع حمله یا هزینه‌ی انرژی:** `src/data/techniques.js` و در صورت تغییر فرمول عمومی، `src/game/rules.js`
-- **دفاع جدید یا مقدار دفاع:** `src/data/defenses.js` و در صورت تغییر فرمول عمومی، `src/game/rules.js`
+- **تکنیک و مشخصات آن:** `src/data/techniques.js`؛ **فرمول حمله/هزینه NP:** `src/game/rules/attack.js`؛ **رنک حمله:** `src/game/rules/ranks/attack.js`
+- **تعریف دفاع:** `src/data/defenses.js`؛ **فرمول دفاع:** `src/game/rules/defense.js`؛ **رنک دفاع:** `src/game/rules/ranks/defense.js`
 - **قوانین نوبت، زنده‌بودن، برنده یا دمیج در دیتابیس:** `src/game/engine.js`
-- **دکمه‌ها، پنل مبارزه و callbackها:** `src/game/ui.js`
-- **دستورهای متنی و روند اجرای آن‌ها:** `src/commands.js`
+- **پنل مبارزه:** `src/game/ui/panel.js`؛ **پیام‌ها و منوها:** `src/game/ui/prompts.js`؛ **callbackها:** `src/game/ui/callbacks.js`
+- **دریافت و مسیریابی دستورها:** `src/commands/index.js`؛ **عملیات مستر:** `src/commands/admin.js`؛ **عملیات بازیکن:** `src/commands/players.js`؛ **حمله و دفاع:** `src/commands/combat.js`
 - **پیام‌های موقت و پاک‌سازی:** `src/game/cleanup.js`
 - **API تلگرام:** `src/telegram.js`
 - **ساختار جدول‌ها:** `schema.sql`
@@ -140,7 +160,7 @@ npx wrangler tail
 
 قوانین رزمی جدید هنوز در منطق بازی پیاده‌سازی نشده‌اند. مشخصات مهندسی‌شده، وضعیت قابلیت‌های فعلی، موارد انجام‌نشده، ابهام‌های نیازمند تصمیم و ترتیب اجرای توسعه در سند زیر نگهداری می‌شود:
 
-- [نقشه پیاده‌سازی قوانین رزمی جوجوتسو کایسن](docs/JUJUTSU-COMBAT-ROADMAP.md)
+- [نقشه مرکزی قوانین رزمی جوجوتسو کایسن](docs/jujutsu/README.md)
 
 **قاعده نگهداری:** هر قابلیت فقط پس از پیاده‌سازی و بررسی رفتاری از فهرست کارهای باز به بخش انجام‌شده منتقل می‌شود. وجود مکانیک مشابه در نسخه فعلی به‌تنهایی به معنی تکمیل قانون جدید نیست.
 
