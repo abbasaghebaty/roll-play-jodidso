@@ -107,7 +107,7 @@ export async function commitAttack(env, {
   const ids = targetIds.map(Number);
   const marks = ids.map(() => '?').join(',');
   const statements = [
-    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type) VALUES (?,?,?,?)',
+    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type,turn_claim) VALUES (?,?,?,?,1)',
       args: [operationId, chat, actorId, 'attack'] },
     { sql: `UPDATE players SET np=np-?
       WHERE chat_id=? AND user_id=? AND alive=1 AND np>=?
@@ -156,7 +156,7 @@ export async function commitSelfDamage(env, chat, actorId, damage, operationId) 
     throw new TypeError('operationId is required for idempotent self-damage');
   }
   const results = await batch(env.DB, [
-    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type) VALUES (?,?,?,?)',
+    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type,turn_claim) VALUES (?,?,?,?,1)',
       args: [operationId,chat,actorId,'self-damage'] },
     { sql: `UPDATE players
       SET hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN 1 ELSE 0 END

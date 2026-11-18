@@ -137,3 +137,25 @@ test('turn advancement is compare-and-swap and cannot skip a second turn', async
   assert.equal(replay, null);
   assert.equal((await DB.prepare('SELECT turn_user FROM games WHERE chat_id=10').bind().first()).turn_user, 2);
 });
+
+
+test('direct attack holds one per-chat turn claim until the turn advances', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  const { advanceTurn } = await import('../src/game/engine.js');
+  const first = await commitAttack({ DB }, {
+    chat: 10, actorId: 1, actorTeam: '', cost: 10, damage: 30,
+    targetIds: [2], tech: 'direct', operationId: 'update:direct-one', undefendable: true,
+  });
+  const second = await commitAttack({ DB }, {
+    chat: 10, actorId: 1, actorTeam: '', cost: 10, damage: 30,
+    targetIds: [2], tech: 'direct', operationId: 'update:direct-two', undefendable: true,
+  });
+  assert.equal(first.applied, true);
+  assert.equal(second.applied, false);
+  assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 90);
+  assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=2').bind().first()).hp, 70);
+  const next = await advanceTurn({ DB }, 10, 1);
+  assert.equal(next.user_id, 2);
+  assert.equal((await DB.prepare('SELECT turn_claim FROM combat_actions WHERE operation_id=?').bind('update:direct-one').first()).turn_claim, 0);
+});
