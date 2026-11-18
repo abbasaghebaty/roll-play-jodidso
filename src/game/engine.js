@@ -68,3 +68,62 @@ export async function resolvePendingDefense(env, chat, targetId, defenseValue, o
   if (!applied) return { applied: false, rows: [], player: null };
   return { applied: true, rows: pendingRows, player: await getPlayer(env, chat, targetId) };
 }
+
+
+// Commit a successful attack, its NP payment and either pending hits or direct
+// damage as one transaction. The database rechecks turn, alive state, NP and
+// every target so a stale command cannot partially spend resources.
+export async function commitAttack(env, {
+  chat, actorId, actorTeam = '', cost, damage, targetIds, tech, operationId, undefendable = false,
+}) {
+  if (typeof operationId !== 'string' || !operationId.trim()) {
+    throw new TypeError('operationId is required for an idempotent attack');
+  }
+  if (!Array.isArray(targetIds) || !targetIds.length ||
+      targetIds.some((id) => !Number.isInteger(Number(id))) ||
+      new Set(targetIds.map(Number)).size !== targetIds.length) {
+    throw new TypeError('attack targetIds must be a non-empty unique list of integer IDs');
+  }
+  const ids = targetIds.map(Number);
+  const marks = ids.map(() => '?').join(',');
+  const statements = [
+    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type) VALUES (?,?,?,?)',
+      args: [operationId, chat, actorId, 'attack'] },
+    { sql: `UPDATE players SET np=np-?
+      WHERE chat_id=? AND user_id=? AND alive=1 AND np>=?
+        AND EXISTS(SELECT 1 FROM games WHERE chat_id=? AND status='active' AND turn_user=?)
+        AND NOT EXISTS(SELECT 1 FROM pending WHERE chat_id=?)
+        AND (SELECT COUNT(*) FROM players t
+          WHERE t.chat_id=? AND t.user_id IN (${marks}) AND t.alive=1
+            AND t.user_id<>? AND (?='' OR t.team<>?))=?
+        AND changes()=1`,
+      args: [cost,chat,actorId,cost,chat,actorId,chat,chat,...ids,actorId,actorTeam,actorTeam,ids.length] },
+  ];
+
+  if (undefendable) {
+    statements.push({
+      sql: `UPDATE players SET hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN 1 ELSE 0 END
+        WHERE chat_id=? AND user_id IN (${marks}) AND alive=1 AND changes()=1`,
+      args: [damage,damage,chat,...ids],
+    });
+  } else {
+    for (const targetId of ids) {
+      statements.push({
+        sql: 'INSERT INTO pending (chat_id,attacker_id,target_id,dmg,tech) SELECT ?,?,?,?,? WHERE changes()=1',
+        args: [chat,actorId,targetId,damage,tech],
+      });
+    }
+  }
+  statements.push({
+    sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()>0',
+    args: [operationId],
+  });
+
+  const results = await batch(env.DB, statements);
+  const applied = (results?.[1]?.meta?.changes || 0) === 1;
+  if (!applied) return { applied: false, targets: [] };
+  const targets = await all(env.DB,
+    `SELECT * FROM players WHERE chat_id=? AND user_id IN (${marks}) ORDER BY seat,user_id`,
+    chat, ...ids);
+  return { applied: true, targets };
+}

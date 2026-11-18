@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { resolvePendingDefense } from '../src/game/engine.js';
+import { resolvePendingDefense, commitAttack } from '../src/game/engine.js';
 
 // SQLite-backed D1 adapter: exercises the actual SQL and transactional batch contract.
 class SQLiteD1 {
   constructor() {
     this.sqlite = new DatabaseSync(':memory:');
     this.sqlite.exec(`
-      CREATE TABLE players (chat_id INTEGER, user_id INTEGER, hp INTEGER, alive INTEGER DEFAULT 1, PRIMARY KEY(chat_id,user_id));
+      CREATE TABLE players (chat_id INTEGER, user_id INTEGER, hp INTEGER, alive INTEGER DEFAULT 1, np INTEGER DEFAULT 100, team TEXT DEFAULT '', seat INTEGER DEFAULT 0, PRIMARY KEY(chat_id,user_id));\n      CREATE TABLE games (chat_id INTEGER PRIMARY KEY, status TEXT, turn_user INTEGER);
       CREATE TABLE pending (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, attacker_id INTEGER, target_id INTEGER, dmg INTEGER, tech TEXT);
       CREATE TABLE combat_actions (operation_id TEXT PRIMARY KEY, chat_id INTEGER, actor_id INTEGER, action_type TEXT, completed INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')));
     `);
@@ -38,7 +38,7 @@ class SQLiteD1 {
   }
 }
 async function seed(DB) {
-  await DB.prepare('INSERT INTO players(chat_id,user_id,hp,alive) VALUES(10,2,100,1)').bind().run();
+  await DB.prepare('INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,2,100,1,100,\u0027\u0027,2)').bind().run();\n  await DB.prepare('INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,1,100,1,100,\u0027\u0027,1)').bind().run();\n  await DB.prepare(\u0027INSERT INTO games(chat_id,status,turn_user) VALUES(10,\u0027active\u0027,1)\u0027).bind().run();
   await DB.prepare('INSERT INTO pending(chat_id,attacker_id,target_id,dmg,tech) VALUES(10,1,2,40,?)').bind('tech-a').run();
   await DB.prepare('INSERT INTO pending(chat_id,attacker_id,target_id,dmg,tech) VALUES(10,3,2,25,?)').bind('tech-b').run();
 }
@@ -67,4 +67,29 @@ test('a distinct duplicate defense cannot resolve already-cleared pending hits',
   assert.equal(first.applied, true);
   assert.equal(second.applied, false);
   assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=2').bind().first()).hp, 55);
+});
+
+test('attack commits NP payment and pending rows atomically and rejects replay', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  // Clear seed pending hits so the actor is eligible to attack.
+  await DB.prepare('DELETE FROM pending').bind().run();
+  const args = { chat: 10, actorId: 1, actorTeam: '', cost: 15, damage: 30,
+    targetIds: [2], tech: 'new-tech', operationId: 'update:attack-one' };
+  const first = await commitAttack({ DB }, args);
+  const replay = await commitAttack({ DB }, args);
+  assert.equal(first.applied, true);
+  assert.equal(replay.applied, false);
+  assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 85);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending').bind().first()).n, 1);
+});
+
+test('attack rejects insufficient NP without creating pending hits or spending NP', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  await DB.prepare('UPDATE players SET np=5 WHERE chat_id=10 AND user_id=1').bind().run();
+  const result = await commitAttack({ DB }, { chat: 10, actorId: 1, actorTeam: '',
+    cost: 15, damage: 30, targetIds: [2], tech: 'new-tech', operationId: 'update:low-np' });
+  assert.equal(result.applied, false);
+  assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 5);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending').bind().first()).n, 0);
 });

@@ -4,7 +4,7 @@ import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue } from '../game/rules.js';
-import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense } from '../game/engine.js';
+import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, commitAttack } from '../game/engine.js';
 import { say, sayFlow, isMaster, resolveId, own } from '../util.js';
 import { mention, esc } from '../telegram.js';
 import { clearResults } from '../game/cleanup.js';
@@ -110,21 +110,24 @@ export async function attack(ctx) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
     return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
   }
-  const paid = await run(env.DB, 'UPDATE players SET np=np-? WHERE chat_id=? AND user_id=? AND np>=?', cost, chat, uid, cost);
-  if (paid?.meta?.changes === 0) return say(ctx, 'NP کافی نبود (احتمالاً دو دستور هم‌زمان). دوباره امتحان کن.');
+  const operationId = ctx.operationId || `message:${chat}:${ctx.msgId}:${uid}`;
+  const committed = await commitAttack(env, {
+    chat, actorId: uid, actorTeam: me.team || '', cost, damage: dmg,
+    targetIds: targets.map((t) => t.user_id), tech: key, operationId,
+    undefendable: tech.kind === 'undefendable',
+  });
+  if (!committed.applied) {
+    return say(ctx, 'عملیات اجرا نشد؛ ممکن است نوبت، انرژی یا هدف‌ها تغییر کرده باشند. وضعیت را تازه کن و دوباره بررسی کن.');
+  }
   await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack',
     data: { tech: key, kind: tech.kind, roll, dmg, cost, np_before: me.np, targets: targets.map((t) => t.user_id) } });
   let text = `${head}\n⚔️ ${esc(tech.name)}: ${dmg} دمیج (هزینه ${cost} NP)`;
   if (tech.kind === 'undefendable') {
-    for (const t of targets) {
-      const res = await applyDamage(env, chat, t, dmg);
-      text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (غیرقابل‌دفاع). ❤️ ${res.hp}${res.dead ? ' ☠️ حذف شد' : ''}`;
+    for (const t of committed.targets) {
+      text += `\n💢 ${mention(t)} ${dmg} دمیج خورد (غیرقابل‌دفاع). ❤️ ${t.hp}${!t.alive ? ' ☠️ حذف شد' : ''}`;
     }
     text += await afterResolve(ctx);
     return sayThenRefresh(ctx, text);
-  }
-  for (const t of targets) {
-    await run(env.DB, 'INSERT INTO pending (chat_id, attacker_id, target_id, dmg, tech) VALUES (?,?,?,?,?)', chat, uid, t.user_id, dmg, key);
   }
   text += `\n\n🛡 منتظر دفاع: ${targets.map(mention).join('، ')}`;
   await sayFlow(ctx, text);
