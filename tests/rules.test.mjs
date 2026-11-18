@@ -16,6 +16,7 @@ import {
   rollAttack,
   techDamage,
   npCost,
+  techNpCost,
   defenseValue,
   absoluteDefense,
   reflectDefense,
@@ -55,6 +56,12 @@ test('live techniques resolve their explicit attack rank before calculating dama
   assert.equal(techDamage(TECHNIQUES.blackflash, 1), 40);
   assert.equal(techDamage(TECHNIQUES.test_aoe, 2), 35);
   assert.equal(techDamage({ rank: 'unknown', base: 17 }, 1), 17);
+});
+
+test('pain attack rank is free while other ranks retain the configured NP formula', () => {
+  assert.equal(techNpCost({ rank: 'pain', kind: 'normal' }, 5), 0);
+  assert.equal(techNpCost({ rank: 'scratch', kind: 'normal' }, 20), npCost(20, 'normal'));
+  assert.equal(techNpCost({ free: true, kind: 'normal' }, 20), 0);
 });
 
 test('attack damage and NP cost preserve the existing formulas', () => {
