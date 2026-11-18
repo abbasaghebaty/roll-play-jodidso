@@ -15,6 +15,9 @@ import {
   techDamage,
   npCost,
   defenseValue,
+  absoluteDefense,
+  reflectDefense,
+  reversalResult,
 } from '../src/game/rules.js';
 
 test('rank tables expose the canonical values without changing their shape', () => {
@@ -50,7 +53,40 @@ test('attack damage and NP cost preserve the existing formulas', () => {
   assert.equal(npCost(20, 'undefendable'), 20);
 });
 
-test('defense calculation preserves the existing base-plus-roll formula', () => {
+test('legacy defense calculation preserves its base-plus-roll formula', () => {
   assert.equal(defenseValue({ base: 5, perDie: 2 }, 3), 11);
   assert.equal(defenseValue(null, 3), 0);
+});
+
+test('absolute defense follows the documented half/full prevention tiers', () => {
+  assert.deepEqual(absoluteDefense(45, 1), {
+    incoming: 45, prevented: 23, remaining: 22, reflected: 0, npCost: 20,
+  });
+  assert.deepEqual(absoluteDefense(45, 4), {
+    incoming: 45, prevented: 45, remaining: 0, reflected: 0, npCost: 25,
+  });
+  assert.equal(absoluteDefense(0, 2).remaining, 0);
+  assert.throws(() => absoluteDefense(20, 0), RangeError);
+  assert.throws(() => absoluteDefense(-1, 2), RangeError);
+});
+
+test('reflect defense returns half/full damage and applies the matching fixed cost', () => {
+  assert.deepEqual(reflectDefense(45, 3), {
+    incoming: 45, prevented: 23, remaining: 22, reflected: 23, npCost: 25,
+  });
+  assert.deepEqual(reflectDefense(45, 4), {
+    incoming: 45, prevented: 45, remaining: 0, reflected: 45, npCost: 30,
+  });
+  assert.throws(() => reflectDefense(20, 5), RangeError);
+});
+
+test('reversal result table maps each documented roll band exactly', () => {
+  assert.deepEqual(reversalResult(1), { roll: 1, hpBuff: 60, npCost: 40 });
+  assert.deepEqual(reversalResult(3), { roll: 3, hpBuff: 60, npCost: 40 });
+  assert.deepEqual(reversalResult(4), { roll: 4, hpBuff: 65, npCost: 45 });
+  assert.deepEqual(reversalResult(6), { roll: 6, hpBuff: 65, npCost: 45 });
+  assert.deepEqual(reversalResult(7), { roll: 7, hpBuff: 70, npCost: 50 });
+  assert.deepEqual(reversalResult(9), { roll: 9, hpBuff: 70, npCost: 50 });
+  assert.throws(() => reversalResult(0), RangeError);
+  assert.throws(() => reversalResult(10), RangeError);
 });
