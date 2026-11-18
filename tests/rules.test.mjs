@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { TECHNIQUES } from '../src/data/techniques.js';
 import {
   ATTACK_RANKS,
   DEFENSE_RANKS,
@@ -42,6 +43,17 @@ test('dice tables remain valid weighted distributions', () => {
     assert.equal(roll.result, roll.pos - roll.neg);
     assert.ok(roll.result >= -9 && roll.result <= 9);
   }
+});
+
+test('live techniques resolve their explicit attack rank before calculating damage', () => {
+  assert.equal(TECHNIQUES.punch.rank, 'scratch');
+  assert.equal(TECHNIQUES.blackflash.rank, 'disaster');
+  assert.equal(TECHNIQUES.test_aoe.rank, 'shadow');
+  assert.equal(TECHNIQUES.test_undef.rank, 'shadow');
+  assert.equal(techDamage(TECHNIQUES.punch, 1), 10);
+  assert.equal(techDamage(TECHNIQUES.blackflash, 1), 40);
+  assert.equal(techDamage(TECHNIQUES.test_aoe, 2), 35);
+  assert.equal(techDamage({ rank: 'unknown', base: 17 }, 1), 17);
 });
 
 test('attack damage and NP cost preserve the existing formulas', () => {
