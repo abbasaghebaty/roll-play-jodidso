@@ -21,7 +21,7 @@ class SQLiteD1 {
       );
       CREATE TABLE combat_actions (
         operation_id TEXT PRIMARY KEY, chat_id INTEGER, actor_id INTEGER,
-        action_type TEXT, completed INTEGER DEFAULT 0,
+        action_type TEXT, completed INTEGER DEFAULT 0, turn_claim INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
       );
     `);

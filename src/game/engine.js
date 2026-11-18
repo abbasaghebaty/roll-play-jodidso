@@ -13,7 +13,10 @@ export async function checkWin(env, chat) {
   const alive = await alivePlayers(env, chat);
   const groups = new Set(alive.map((p) => (p.team ? 't:' + p.team : 'u:' + p.user_id)));
   if (groups.size <= 1) {
-    await run(env.DB, "UPDATE games SET status='ended' WHERE chat_id=?", chat);
+    await batch(env.DB, [
+      { sql: "UPDATE games SET status='ended' WHERE chat_id=? AND status='active'", args: [chat] },
+      { sql: 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1 AND changes()=1', args: [chat] },
+    ]);
     return alive;
   }
   return null;
@@ -21,23 +24,28 @@ export async function checkWin(env, chat) {
 // نوبت بعدی: اولین بازیکن زنده با شماره‌ی صندلی بزرگ‌تر، وگرنه اولین نفر
 // Compare-and-swap turn advancement: simultaneous callbacks from the same
 // actor can advance the turn only once. Pending defenses block the transition.
+// Compare-and-swap turn advancement and release of the per-chat turn claim
+// happen in one transaction, preventing two simultaneous actions from skipping turns.
 export async function advanceTurn(env, chat, expectedTurnUser = null) {
   const game = await getGame(env, chat);
   if (!game || game.status !== 'active') return null;
   const expected = expectedTurnUser ?? game.turn_user;
-  const result = await run(env.DB, `UPDATE games
-    SET turn_user=COALESCE(
-      (SELECT user_id FROM players
-        WHERE chat_id=? AND alive=1
-          AND (seat > COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1)
-            OR (seat=COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1) AND user_id>?))
-        ORDER BY seat,user_id LIMIT 1),
-      (SELECT user_id FROM players WHERE chat_id=? AND alive=1 ORDER BY seat,user_id LIMIT 1)
-    )
-    WHERE chat_id=? AND status='active' AND turn_user=?
-      AND NOT EXISTS(SELECT 1 FROM pending WHERE chat_id=?)`,
-    chat,chat,expected,chat,expected,expected,chat,chat,expected,chat);
-  if ((result?.meta?.changes || 0) === 0) return null;
+  const results = await batch(env.DB, [
+    { sql: `UPDATE games
+      SET turn_user=COALESCE(
+        (SELECT user_id FROM players
+          WHERE chat_id=? AND alive=1
+            AND (seat > COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1)
+              OR (seat=COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1) AND user_id>?))
+          ORDER BY seat,user_id LIMIT 1),
+        (SELECT user_id FROM players WHERE chat_id=? AND alive=1 ORDER BY seat,user_id LIMIT 1)
+      )
+      WHERE chat_id=? AND status='active' AND turn_user=?
+        AND NOT EXISTS(SELECT 1 FROM pending WHERE chat_id=?)`,
+      args: [chat,chat,expected,chat,expected,expected,chat,chat,expected,chat] },
+    { sql: 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1 AND changes()=1', args: [chat] },
+  ]);
+  if ((results?.[0]?.meta?.changes || 0) === 0) return null;
   const updated = await getGame(env, chat);
   return updated ? getPlayer(env, chat, updated.turn_user) : null;
 }
