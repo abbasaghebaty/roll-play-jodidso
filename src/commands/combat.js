@@ -3,7 +3,7 @@ import { all, first, run } from '../db.js';
 import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
-import { rollAttack, techDamage, npCost, d10, defenseValue } from '../game/rules.js';
+import { rollAttack, techDamage, techNpCost, d10, defenseValue } from '../game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, commitAttack, commitSelfDamage } from '../game/engine.js';
 import { say, sayFlow, isMaster, resolveId, own } from '../util.js';
 import { mention, esc } from '../telegram.js';
@@ -109,7 +109,7 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.player.hp}${death}${tail}`);
   }
   const dmg = techDamage(tech, roll.result);
-  const cost = tech.free ? 0 : npCost(dmg, tech.kind);
+  const cost = techNpCost(tech, dmg);
   if (me.np < cost) {
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-no-np', data: { tech: key, roll, dmg, cost, np: me.np } });
     return sayThenRefresh(ctx, `${head}\n💥 دمیج ${dmg}، هزینه ${cost} NP ولی فقط ${me.np} داری. تکنیک شکست خورد و نوبت پرید.${await passTurn(ctx)}`);
