@@ -37,6 +37,7 @@ export async function endgame(ctx) {
 
   await run(env.DB, "UPDATE games SET status='ended' WHERE chat_id=?", chat);
   await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
+  await run(env.DB, 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1', chat);
 
   try {
     await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
