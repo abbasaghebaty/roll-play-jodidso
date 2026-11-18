@@ -1,0 +1,8 @@
+{
+  "name": "jujutsu-roleplay-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
