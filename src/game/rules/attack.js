@@ -20,3 +20,11 @@ export function npCost(dmg, kind = "normal") {
   return base;
 }
 
+// Rank "pain" is explicitly free in the rules; the legacy free flag remains
+// supported for existing techniques until their metadata is fully normalized.
+export function techNpCost(tech, dmg) {
+  if (!tech) return 0;
+  if (tech.free === true || tech.rank === 'pain') return 0;
+  return npCost(dmg, tech.kind || 'normal');
+}
+
