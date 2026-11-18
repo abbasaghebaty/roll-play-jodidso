@@ -117,8 +117,26 @@ test('attack rejects insufficient NP without creating pending hits or spending N
   assert.equal(result.applied, false);
   assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 5);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending').bind().first()).n, 0);
+  const failedAction = await DB.prepare("SELECT completed,turn_claim FROM combat_actions WHERE operation_id='update:low-np'").bind().first();
+  assert.equal(failedAction.completed, 1);
+  assert.equal(failedAction.turn_claim, 0);
 });
 
+
+test('rejected attack caused by a stale turn releases its provisional claim', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  await DB.prepare('UPDATE games SET turn_user=2 WHERE chat_id=10').bind().run();
+  const result = await commitAttack({ DB }, {
+    chat: 10, actorId: 1, actorTeam: '', cost: 10, damage: 30,
+    targetIds: [2], tech: 'stale-turn', operationId: 'update:stale-turn',
+  });
+  assert.equal(result.applied, false);
+  const action = await DB.prepare("SELECT completed,turn_claim FROM combat_actions WHERE operation_id='update:stale-turn'").bind().first();
+  assert.equal(action.completed, 1);
+  assert.equal(action.turn_claim, 0);
+  assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 100);
+});
 
 test('attack failure self-damage is idempotent and turn-gated', async () => {
   const DB = new SQLiteD1(); await seed(DB);
@@ -129,6 +147,19 @@ test('attack failure self-damage is idempotent and turn-gated', async () => {
   assert.equal(first.player.hp, 80);
   assert.equal(replay.applied, false);
   assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=1').bind().first()).hp, 80);
+});
+
+test('rejected self-damage caused by a stale turn releases its provisional claim', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  await DB.prepare('UPDATE games SET turn_user=2 WHERE chat_id=10').bind().run();
+  const { commitSelfDamage } = await import('../src/game/engine.js');
+  const result = await commitSelfDamage({ DB }, 10, 1, 20, 'update:stale-self');
+  assert.equal(result.applied, false);
+  const action = await DB.prepare("SELECT completed,turn_claim FROM combat_actions WHERE operation_id='update:stale-self'").bind().first();
+  assert.equal(action.completed, 1);
+  assert.equal(action.turn_claim, 0);
+  assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=1').bind().first()).hp, 100);
 });
 
 test('turn advancement is compare-and-swap and cannot skip a second turn', async () => {
