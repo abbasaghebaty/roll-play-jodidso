@@ -14,6 +14,10 @@
 │       ├── README.md
 │       ├── DECISIONS.md
 │       └── 01..11-topic-files.md
+├── tests/
+│   ├── rules.test.mjs
+│   └── import-paths.test.mjs
+├── .github/workflows/validate.yml
 └── src/
     ├── index.js
     ├── commands.js              # backward-compatible entry point
@@ -23,6 +27,12 @@
     │   ├── players.js
     │   ├── combat.js
     │   └── helpers.js
+    ├── db.js
+    ├── telegram.js
+    ├── util.js
+    ├── log.js
+    ├── report.js
+    ├── testmode.js
     ├── data/
     │   ├── characters.js
     │   ├── techniques.js
@@ -96,7 +106,7 @@
 2. `index.js` آپدیت را دریافت و از تکراری نبودنش اطمینان حاصل می‌کند.
 3. پیام‌های دستوری به `commands/index.js` می‌رسند و به handler مناسب در `admin.js`، `players.js` یا `combat.js` سپرده می‌شوند.
 4. handler مربوطه از داده‌های `src/data/`، محاسبات `game/rules/` و عملیات وضعیت `engine.js` استفاده می‌کند.
-5. وضعیت بازی و بازیکنان در D1 ذخیره می‌شود؛ رابط دکمه‌ای از طریق `ui.js` و ارتباط تلگرام از طریق `telegram.js` مدیریت می‌شود.
+5. وضعیت بازی و بازیکنان در D1 ذخیره می‌شود؛ رابط دکمه‌ای در `game/ui/` و ارتباط تلگرام از طریق `telegram.js` مدیریت می‌شود.
 6. رویدادها و خطاها در صورت امکان در `logs` ثبت می‌شوند و گزارش‌های دستی در `reports` قرار می‌گیرند.
 
 ## نقش فایل‌های دیتابیس
