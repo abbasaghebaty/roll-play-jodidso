@@ -103,7 +103,9 @@ CREATE TABLE IF NOT EXISTS combat_actions (
   actor_id INTEGER NOT NULL,
   action_type TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
+  turn_claim INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_combat_actions_chat_created ON combat_actions (chat_id, created_at);
-\nCREATE UNIQUE INDEX IF NOT EXISTS idx_combat_actions_active_turn ON combat_actions (chat_id) WHERE turn_claim=1;\n
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_combat_actions_active_turn ON combat_actions (chat_id) WHERE turn_claim=1;

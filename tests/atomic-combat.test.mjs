@@ -24,6 +24,7 @@ class SQLiteD1 {
         action_type TEXT, completed INTEGER DEFAULT 0, turn_claim INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now'))
       );
+      CREATE UNIQUE INDEX idx_combat_actions_active_turn ON combat_actions(chat_id) WHERE turn_claim=1;
     `);
   }
   prepare(sql) {

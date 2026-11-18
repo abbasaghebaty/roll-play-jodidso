@@ -9,13 +9,18 @@
 ├── README.md
 ├── wrangler.toml
 ├── schema.sql
+├── migrations/
+│   ├── 0001_combat_actions.sql
+│   └── 0002_combat_turn_claim.sql
 ├── docs/
 │   └── jujutsu/
 │       ├── README.md
 │       ├── DECISIONS.md
+│       ├── IMPLEMENTATION-STATUS.md
 │       └── 01..11-topic-files.md
 ├── tests/
 │   ├── rules.test.mjs
+│   ├── atomic-combat.test.mjs
 │   └── import-paths.test.mjs
 ├── .github/workflows/validate.yml
 └── src/
@@ -123,7 +128,8 @@
 | `battle_turn_ui` | آخرین بازیکنی که پیام نوبت اختصاصی برایش ساخته شده |
 | `logs` | رویدادهای ورودی/خروجی، اتفاقات بازی و خطاها |
 | `reports` | گزارش‌های ثبت‌شده به همراه snapshot وضعیت بازی و لاگ‌های مرتبط |
-| `processed_updates` | شناسه‌ی آپدیت‌های تلگرام برای جلوگیری از اجرای دوباره |\n| `combat_actions` | دفتر شناسه عملیات رزمی برای idempotency در حمله، دفاع و خودزنی |
+| `processed_updates` | شناسه‌ی آپدیت‌های تلگرام برای جلوگیری از اجرای دوباره |
+| `combat_actions` | دفتر شناسه عملیات رزمی و قفل یک عملیات در هر نوبت برای جلوگیری از تکرار/هم‌زمانی |
 
 ### نکته‌ی مهم درباره‌ی داده‌ها
 
@@ -170,7 +176,19 @@ npx wrangler tail
 
 قوانین رزمی جدید هنوز در منطق بازی پیاده‌سازی نشده‌اند. مشخصات مهندسی‌شده، وضعیت قابلیت‌های فعلی، موارد انجام‌نشده، ابهام‌های نیازمند تصمیم و ترتیب اجرای توسعه در سند زیر نگهداری می‌شود:
 
-- [نقشه مرکزی قوانین رزمی جوجوتسو کایسن](docs/jujutsu/README.md)\n- [وضعیت اجرایی و میزان تکمیل هر قانون](docs/jujutsu/IMPLEMENTATION-STATUS.md)\n\n## Migrationهای D1\n\n- `migrations/0001_combat_actions.sql` جدول ثبت عملیات رزمی idempotent را اضافه می‌کند و داده‌های موجود را تغییر یا حذف نمی‌کند. پیش از استفاده از نسخه جدید، این migration را روی D1 اجرا کنید.
+- [نقشه مرکزی قوانین رزمی جوجوتسو کایسن](docs/jujutsu/README.md)
+- [وضعیت اجرایی و میزان تکمیل هر قانون](docs/jujutsu/IMPLEMENTATION-STATUS.md)
+
+## Migrationهای D1
+
+برای دیتابیس موجود، Migrationها را به‌ترتیب و فقط یک‌بار اجرا کنید:
+
+```bash
+npx wrangler d1 execute anime-rpg --remote --file=./migrations/0001_combat_actions.sql
+npx wrangler d1 execute anime-rpg --remote --file=./migrations/0002_combat_turn_claim.sql
+```
+
+این دو Migration فقط جدول/ستون/ایندکس افزایشی ایجاد می‌کنند و داده‌های قبلی بازی را حذف یا بازنویسی نمی‌کنند.
 
 **قاعده نگهداری:** هر قابلیت فقط پس از پیاده‌سازی و بررسی رفتاری از فهرست کارهای باز به بخش انجام‌شده منتقل می‌شود. وجود مکانیک مشابه در نسخه فعلی به‌تنهایی به معنی تکمیل قانون جدید نیست.
 
