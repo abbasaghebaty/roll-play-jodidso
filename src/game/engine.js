@@ -138,6 +138,13 @@ export async function commitAttack(env, {
     sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()>0',
     args: [operationId],
   });
+  // A rejected transaction must not leave its provisional turn claim behind.
+  // Successful actions are already completed above and retain their claim until
+  // defense/turn advancement; failed actions are finalized and unlocked here.
+  statements.push({
+    sql: "UPDATE combat_actions SET completed=1,turn_claim=0 WHERE operation_id=? AND action_type='attack' AND actor_id=? AND chat_id=? AND completed=0 AND changes()=0",
+    args: [operationId, actorId, chat],
+  });
 
   const results = await batch(env.DB, statements);
   const applied = (results?.[1]?.meta?.changes || 0) === 1;
@@ -166,6 +173,9 @@ export async function commitSelfDamage(env, chat, actorId, damage, operationId) 
       args: [damage,damage,chat,actorId,chat,actorId] },
     { sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()>0',
       args: [operationId] },
+    // Finalize rejected attempts and release only their provisional claim.
+    { sql: "UPDATE combat_actions SET completed=1,turn_claim=0 WHERE operation_id=? AND action_type='self-damage' AND actor_id=? AND chat_id=? AND completed=0 AND changes()=0",
+      args: [operationId,actorId,chat] },
   ]);
   if ((results?.[1]?.meta?.changes || 0) === 0) return { applied: false, player: null };
   return { applied: true, player: await getPlayer(env, chat, actorId) };
