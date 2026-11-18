@@ -114,3 +114,26 @@ test('attack rejects insufficient NP without creating pending hits or spending N
   assert.equal((await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first()).np, 5);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending').bind().first()).n, 0);
 });
+
+
+test('attack failure self-damage is idempotent and turn-gated', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  const first = await (await import('../src/game/engine.js')).commitSelfDamage({ DB }, 10, 1, 20, 'update:self-one');
+  const replay = await (await import('../src/game/engine.js')).commitSelfDamage({ DB }, 10, 1, 20, 'update:self-one');
+  assert.equal(first.applied, true);
+  assert.equal(first.player.hp, 80);
+  assert.equal(replay.applied, false);
+  assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=1').bind().first()).hp, 80);
+});
+
+test('turn advancement is compare-and-swap and cannot skip a second turn', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM pending').bind().run();
+  const { advanceTurn } = await import('../src/game/engine.js');
+  const first = await advanceTurn({ DB }, 10, 1);
+  const replay = await advanceTurn({ DB }, 10, 1);
+  assert.equal(first.user_id, 2);
+  assert.equal(replay, null);
+  assert.equal((await DB.prepare('SELECT turn_user FROM games WHERE chat_id=10').bind().first()).turn_user, 2);
+});

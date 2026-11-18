@@ -4,7 +4,7 @@ import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
 import { rollAttack, techDamage, npCost, d10, defenseValue } from '../game/rules.js';
-import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, commitAttack } from '../game/engine.js';
+import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, commitAttack, commitSelfDamage } from '../game/engine.js';
 import { say, sayFlow, isMaster, resolveId, own } from '../util.js';
 import { mention, esc } from '../telegram.js';
 import { clearResults } from '../game/cleanup.js';
@@ -16,18 +16,19 @@ async function afterResolve(ctx) {
   const { env, chat } = ctx;
   const left = await first(env.DB, 'SELECT COUNT(*) AS n FROM pending WHERE chat_id=?', chat);
   if (left.n > 0) return '';
+  const currentGame = await getGame(env, chat);
   const win = await checkWin(env, chat);
   if (win) {
     ctx.refreshAfter = true;
     return `\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`;
   }
-  const next = await advanceTurn(env, chat);
+  const next = await advanceTurn(env, chat, currentGame?.turn_user);
   await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
 }
 async function passTurn(ctx) {
-  const next = await advanceTurn(ctx.env, ctx.chat);
+  const next = await advanceTurn(ctx.env, ctx.chat, ctx.uid);
   await run(ctx.env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', ctx.chat);
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
@@ -97,12 +98,15 @@ export async function attack(ctx) {
   }
   if (roll.result < 0) {
     const selfDmg = techDamage(tech, Math.abs(roll.result));
-    const res = await applyDamage(env, chat, me, selfDmg);
+    const operationId = ctx.operationId || `message:${chat}:${ctx.msgId}:${uid}`;
+    const res = await commitSelfDamage(env, chat, uid, selfDmg, operationId);
+    if (!res.applied) return say(ctx, 'این عملیات قبلاً اجرا شده یا نوبت تغییر کرده است.');
+    const dead = !res.player?.alive;
     await logEvent(env, { chat, user: uid, kind: 'event', text: 'attack-self-damage',
-      data: { tech: key, roll, dmg: selfDmg, hp_after: res.hp, dead: res.dead } });
+      data: { tech: key, roll, dmg: selfDmg, hp_after: res.player.hp, dead } });
     const tail = await afterResolve(ctx);
-    const death = res.dead ? ' ☠️ خودزنی باعث حذف تو شد.' : '';
-    return sayThenRefresh(ctx, `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.hp}${death}${tail}`);
+    const death = dead ? ' ☠️ خودزنی باعث حذف تو شد.' : '';
+    return sayThenRefresh(ctx, `${head}\n💥 ${roll.label}؛ حمله شکست خورد و ${selfDmg} دمیج به خودت وارد کردی. ❤️ جان: ${res.player.hp}${death}${tail}`);
   }
   const dmg = techDamage(tech, roll.result);
   const cost = tech.free ? 0 : npCost(dmg, tech.kind);

@@ -19,17 +19,29 @@ export async function checkWin(env, chat) {
   return null;
 }
 // نوبت بعدی: اولین بازیکن زنده با شماره‌ی صندلی بزرگ‌تر، وگرنه اولین نفر
-export async function advanceTurn(env, chat) {
+// Compare-and-swap turn advancement: simultaneous callbacks from the same
+// actor can advance the turn only once. Pending defenses block the transition.
+export async function advanceTurn(env, chat, expectedTurnUser = null) {
   const game = await getGame(env, chat);
-  if (!game) return null;
-  const alive = await alivePlayers(env, chat);
-  if (!alive.length) return null;
-  const cur = await getPlayer(env, chat, game.turn_user);
-  const curSeat = cur ? cur.seat : -1;
-  const next = alive.find((p) => p.seat > curSeat || (cur && p.seat === curSeat && p.user_id > cur.user_id)) || alive[0];
-  await run(env.DB, 'UPDATE games SET turn_user=? WHERE chat_id=?', next.user_id, chat);
-  return next;
+  if (!game || game.status !== 'active') return null;
+  const expected = expectedTurnUser ?? game.turn_user;
+  const result = await run(env.DB, `UPDATE games
+    SET turn_user=COALESCE(
+      (SELECT user_id FROM players
+        WHERE chat_id=? AND alive=1
+          AND (seat > COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1)
+            OR (seat=COALESCE((SELECT seat FROM players WHERE chat_id=? AND user_id=?),-1) AND user_id>?))
+        ORDER BY seat,user_id LIMIT 1),
+      (SELECT user_id FROM players WHERE chat_id=? AND alive=1 ORDER BY seat,user_id LIMIT 1)
+    )
+    WHERE chat_id=? AND status='active' AND turn_user=?
+      AND NOT EXISTS(SELECT 1 FROM pending WHERE chat_id=?)`,
+    chat,chat,expected,chat,expected,expected,chat,chat,expected,chat);
+  if ((result?.meta?.changes || 0) === 0) return null;
+  const updated = await getGame(env, chat);
+  return updated ? getPlayer(env, chat, updated.turn_user) : null;
 }
+
 // کم‌کردن جان در خود دیتابیس تا دمیج هم‌زمان روی مقدار کهنه بازنویسی نشود.
 export async function applyDamage(env, chat, target, dmg) {
   const d = Math.max(0, Math.floor(Number(dmg)) || 0);
@@ -126,4 +138,27 @@ export async function commitAttack(env, {
     `SELECT * FROM players WHERE chat_id=? AND user_id IN (${marks}) ORDER BY seat,user_id`,
     chat, ...ids);
   return { applied: true, targets };
+}
+
+
+// Apply attack-failure self-damage once, guarded by the same operation ledger
+// and turn ownership used by successful attacks.
+export async function commitSelfDamage(env, chat, actorId, damage, operationId) {
+  if (typeof operationId !== 'string' || !operationId.trim()) {
+    throw new TypeError('operationId is required for idempotent self-damage');
+  }
+  const results = await batch(env.DB, [
+    { sql: 'INSERT OR IGNORE INTO combat_actions (operation_id,chat_id,actor_id,action_type) VALUES (?,?,?,?)',
+      args: [operationId,chat,actorId,'self-damage'] },
+    { sql: `UPDATE players
+      SET hp=MAX(0,hp-?), alive=CASE WHEN hp-?>0 THEN 1 ELSE 0 END
+      WHERE chat_id=? AND user_id=? AND alive=1
+        AND EXISTS(SELECT 1 FROM games WHERE chat_id=? AND status='active' AND turn_user=?)
+        AND changes()=1`,
+      args: [damage,damage,chat,actorId,chat,actorId] },
+    { sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()>0',
+      args: [operationId] },
+  ]);
+  if ((results?.[1]?.meta?.changes || 0) === 0) return { applied: false, player: null };
+  return { applied: true, player: await getPlayer(env, chat, actorId) };
 }
