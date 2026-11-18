@@ -62,7 +62,7 @@ export async function resolvePendingDefense(env, chat, targetId, defenseValue, o
       AND changes()=1`,
       args: [defenseValue,chat,targetId,defenseValue,chat,targetId,chat,targetId,chat,targetId] },
     { sql: 'DELETE FROM pending WHERE chat_id=? AND target_id=? AND changes()=1', args: [chat,targetId] },
-    { sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()=1', args: [operationId] },
+    { sql: 'UPDATE combat_actions SET completed=1 WHERE operation_id=? AND changes()>0', args: [operationId] },
   ]);
   const applied = (results?.[1]?.meta?.changes || 0) > 0;
   if (!applied) return { applied: false, rows: [], player: null };
