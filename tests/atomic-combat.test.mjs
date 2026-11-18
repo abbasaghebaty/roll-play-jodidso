@@ -24,7 +24,11 @@ class SQLiteD1 {
   async batch(statements) {
     this.sqlite.exec('BEGIN');
     try {
-      const result = statements.map((s) => ({ meta: { changes: Number(s.run().changes || 0) } }));
+      const result = [];
+      for (const statement of statements) {
+        const executed = await statement.run();
+        result.push({ meta: { changes: Number(executed.changes || 0) } });
+      }
       this.sqlite.exec('COMMIT');
       return result;
     } catch (error) {
