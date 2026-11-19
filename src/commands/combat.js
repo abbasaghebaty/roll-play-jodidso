@@ -3,7 +3,7 @@ import { all, first, run } from '../db.js';
 import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
-import { rollAttack, techDamage, techSelfDamage, techNpCost, d10, defenseValue } from '../game/rules.js';
+import { rollAttack, techDamage, techNpCost, d10, defenseValue } from '../game/rules.js';
 import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, commitAttack, commitSelfDamage } from '../game/engine.js';
 import { say, sayFlow, isMaster, resolveId, own } from '../util.js';
 import { mention, esc } from '../telegram.js';
@@ -97,7 +97,7 @@ export async function attack(ctx) {
     return sayThenRefresh(ctx, `${head}\n😶 خنثی شد، اتفاقی نیفتاد.${await passTurn(ctx)}`);
   }
   if (roll.result < 0) {
-    const selfDmg = techSelfDamage(tech, roll.result);
+    const selfDmg = techDamage(tech, Math.abs(roll.result));
     const operationId = ctx.operationId || `message:${chat}:${ctx.msgId}:${uid}`;
     const res = await commitSelfDamage(env, chat, uid, selfDmg, operationId);
     if (!res.applied) return say(ctx, 'این عملیات قبلاً اجرا شده یا نوبت تغییر کرده است.');
