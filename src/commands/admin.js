@@ -18,10 +18,11 @@ export async function newgame(ctx) {
   await batch(env.DB, [
     { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND status='pending'",
       args: [chat] },
-    { sql: `INSERT INTO games (chat_id,status,turn_user,session_id,selection_token_hash)
-      VALUES (?,'lobby',0,?,?)
+    { sql: `INSERT INTO games (chat_id,status,turn_user,session_id,selection_token_hash,selection_expires_at)
+      VALUES (?,'lobby',0,?,?,datetime('now','+7 days'))
       ON CONFLICT(chat_id) DO UPDATE SET status='lobby',turn_user=0,
-        session_id=excluded.session_id,selection_token_hash=excluded.selection_token_hash`,
+        session_id=excluded.session_id,selection_token_hash=excluded.selection_token_hash,
+        selection_expires_at=datetime('now','+7 days')`,
       args: [chat, session.sessionId, session.tokenHash] },
     { sql: 'DELETE FROM players WHERE chat_id=?', args: [chat] },
     { sql: 'DELETE FROM pending WHERE chat_id=?', args: [chat] },
