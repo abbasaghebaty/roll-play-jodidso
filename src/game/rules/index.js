@@ -4,3 +4,5 @@ export * from './ranks/index.js';
 export * from './dice.js';
 export * from './attack.js';
 export * from './defense.js';
+export * from './advanced-defense.js';
+export * from './reversal.js';

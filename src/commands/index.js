@@ -36,6 +36,7 @@ export async function handleUpdate(update, env) {
   const priv = m.chat.type === 'private';
   const ctx = {
     env,
+    operationId: Number.isInteger(update.update_id) ? `update:${update.update_id}` : null,
     private: priv,
     chat: m.chat.id,
     uid: m.from.id,

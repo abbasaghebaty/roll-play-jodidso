@@ -26,6 +26,7 @@ export async function handleBattleCallback(query, env, handlers) {
 
   const ctx = {
     env,
+    operationId: query.id ? `callback:${query.id}` : null,
     private: m.chat.type === 'private',
     chat,
     uid,
