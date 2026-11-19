@@ -32,8 +32,8 @@ export function normalizeBotUsername(value) {
 export function buildSelectionUrl(env, game) {
   const username = normalizeBotUsername(env?.BOT_USERNAME);
   const sessionId = String(game?.session_id || '');
-  if (!SESSION_ID_PATTERN.test(sessionId)) {
-    throw new Error('Game session is missing a valid private-selection identifier.');
+  if (!SESSION_ID_PATTERN.test(sessionId) || !/^[a-f0-9]{64}$/i.test(String(game?.selection_token_hash || ''))) {
+    throw new Error('Game session is missing a valid private-selection identifier or token hash. Run /newgame after applying the selection migration.');
   }
   return `https://t.me/${username}?start=cs_${sessionId}`;
 }
