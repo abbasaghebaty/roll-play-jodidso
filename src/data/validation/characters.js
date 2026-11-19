@@ -1,5 +1,6 @@
 export function validateCharacters(characters, techniqueIds) {
   const errors = [];
+  const warnings = [];
   const ids = new Set();
   const codes = new Set();
   const keys = new Set();
@@ -13,13 +14,15 @@ export function validateCharacters(characters, techniqueIds) {
     codes.add(String(item.code || '').toUpperCase());
     keys.add(item.key);
 
-    if (!item.name?.fa || !item.name?.en) errors.push(`${at}: Persian and English full names are required`);
+    if (!item.name?.fa) errors.push(`${at}: Persian full name is required`);
+    if (!item.name?.en) warnings.push(`${at}: English full name is missing from source data`);
     if (!Number.isFinite(item.stats?.hp) || item.stats.hp < 0) errors.push(`${at}: invalid HP`);
     if (!Number.isFinite(item.stats?.np) || item.stats.np < 0) errors.push(`${at}: invalid NP`);
     if (!Array.isArray(item.techniqueIds)) errors.push(`${at}: techniqueIds must be an array`);
     else for (const id of item.techniqueIds) {
       if (!techniqueIds.has(id)) errors.push(`${at}: unknown technique id ${id}`);
     }
+    if (typeof item.active !== 'boolean') errors.push(`${at}: active must be an explicit boolean`);
   }
-  return errors;
+  return { errors, warnings };
 }
