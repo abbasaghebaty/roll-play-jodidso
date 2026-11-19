@@ -221,18 +221,16 @@ test('the same character can be selected by multiple users without duplicate pla
 });
 
 test('migration 0003 preserves existing game rows and adds only selection metadata', async () => {
-  const DB = new SQLiteD1();
+  const DB = new DatabaseSync(':memory:');
   const migration = await readFile(new URL('../migrations/0003_private_character_selection.sql', import.meta.url), 'utf8');
-  DB.sqlite.exec('CREATE TABLE legacy_games(chat_id INTEGER PRIMARY KEY,status TEXT,turn_user INTEGER)');
-  DB.sqlite.exec("INSERT INTO legacy_games VALUES(10,'lobby',0)");
-  const sql = migration
-    .replaceAll('games', 'legacy_games');
-  DB.sqlite.exec(sql);
-  const row = DB.sqlite.prepare('SELECT * FROM legacy_games WHERE chat_id=10').get();
+  DB.exec('CREATE TABLE games(chat_id INTEGER PRIMARY KEY,status TEXT,turn_user INTEGER)');
+  DB.exec("INSERT INTO games VALUES(10,'lobby',0)");
+  DB.exec(migration);
+  const row = DB.prepare('SELECT * FROM games WHERE chat_id=10').get();
   assert.equal(row.status, 'lobby');
   assert.equal(row.turn_user, 0);
   assert.match(row.session_id, /^[a-f0-9]{32}$/);
   assert.equal(row.selection_token_hash, null);
-  assert.equal(DB.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='character_selection_requests'").get().name,
+  assert.equal(DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='character_selection_requests'").get().name,
     'character_selection_requests');
 });
