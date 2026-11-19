@@ -13,4 +13,4 @@ export {
   getTechniqueByKey,
   getTechniquesByCharacter,
 } from './techniques.js';
-export { searchCharacters, normalizeSearchText, damerauLevenshtein } from './search.js';
+export { searchCharacters, searchCharacterRecords, normalizeSearchText, damerauLevenshtein } from './search.js';
