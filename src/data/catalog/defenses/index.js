@@ -6,7 +6,7 @@ export const DEFENSE_CATALOG = [
     id: 'def_jjk_dodge',
     code: 'DODGE',
     key: 'dodge',
-    name: { fa: 'جاخالی', en: 'Dodge' },
+    name: { fa: 'جاخالی', en: null },
     rank: 'dodge',
     base: 0,
     perDie: DEFENSE_RANKS.dodge.baseValue,
