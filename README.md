@@ -43,10 +43,14 @@
     ├── report.js
     ├── testmode.js
     ├── data/
-    │   ├── characters.js
-    │   ├── techniques.js
-    │   └── defenses.js
+    │   ├── characters.js             # runtime compatibility adapter
+    │   ├── techniques.js             # runtime compatibility adapter
+    │   ├── defenses.js               # runtime compatibility adapter
+    │   ├── catalog/                  # canonical franchise-based data
+    │   ├── registry/                 # stable IDs, codes and search
+    │   └── validation/               # Catalog integrity checks
     └── game/
+        ├── selection/                # private selection sessions and requests
         ├── engine.js
         ├── rules.js              # backward-compatible entry point
         ├── rules/
@@ -90,7 +94,7 @@
 
 ### داده‌های بازی
 
-این سه فایل منبع تعریف ثابت شخصیت‌ها و قابلیت‌ها هستند؛ اطلاعات پایه از D1 خوانده نمی‌شوند:
+Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ فایل‌های سه‌گانه‌ی قدیمی فقط برای سازگاری مصرف‌کننده‌های موجود باقی مانده‌اند:
 
 | فایل | مسئولیت |
 |---|---|
@@ -109,7 +113,8 @@
 
 | فایل | مسئولیت |
 |---|---|
-| `src/game/engine.js` | عملیات وضعیت بازی در D1؛ ثبت اتمیک حمله/NP، حل اتمیک دفاع، خودزنی و جابه‌جایی compare-and-swap نوبت |
+| `src/game/selection/` | Sessionهای بازی، درخواست مستقل هر کاربر، اعتبارسنجی لینک، جست‌وجو و ثبت انتخاب خصوصی |
+| `src/game/engine.js` | عملیات وضعیت بازی در D1؛ ثبت اتمیک حمله/NP، حل اتمیک دفاع، خودزنی، همگام‌سازی سقف Catalog و جابه‌جایی compare-and-swap نوبت |
 | `src/game/rules/` | قوانین خالص و مستقل از Telegram/D1؛ قرارداد `finalRoll`، فرمول دمیج/خودزنی و دفاع، محاسبات مستقل دفاع مطلق/رفلکت و جدول تکنیک معکوس. `src/game/rules.js` فقط barrel سازگاری است |
 | `src/game/ui/` | رابط گروه تفکیک‌شده به پیام‌ها و promptها، پنل ثابت و callbackها. `src/game/ui.js` مسیر سازگاری exportهاست |
 | `src/game/cleanup.js` | مدیریت پیام‌های موقت ربات؛ نگه‌داشتن نتیجه‌ی اخیر، حذف پیام‌های قدیمی، چرخش پیام نوبت و پاک‌سازی پیام‌های ثبت‌شده در `bot_msgs` |
