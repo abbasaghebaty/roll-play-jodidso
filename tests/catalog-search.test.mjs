@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CHARACTERS } from '../src/data/characters.js';
 import { TECHNIQUES } from '../src/data/techniques.js';
 import { DEFENSES } from '../src/data/defenses.js';
+import { JUJUTSU_CHARACTERS } from '../src/data/catalog/characters/jujutsu.js';
 import {
   getCharacterByCode,
   getCharacterById,
@@ -33,12 +34,9 @@ test('catalog is valid and keeps the current runtime data values', () => {
 test('missing English source names are reported as warnings, not invented values', () => {
   const { warnings } = inspectCatalog();
   assert.ok(warnings.some((item) => item.includes('characters[0]') && item.includes('English full name')));
-  assert.equal((awaitableEnglishName()), null);
+  assert.equal(JUJUTSU_CHARACTERS[0].name.en, null);
+  assert.equal(JUJUTSU_CHARACTERS[1].name.en, null);
 });
-
-function awaitableEnglishName() {
-  return null;
-}
 
 test('catalog registry resolves stable ids and developer-assigned codes', () => {
   assert.equal(getCharacterById('char_jjk_yuji').key, 'yuji');
