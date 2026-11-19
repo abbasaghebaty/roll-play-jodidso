@@ -47,7 +47,10 @@ class SQLiteD1 {
   prepare(sql) {
     const db = this.sqlite;
     return { bind: (...args) => ({
-      run: async () => db.prepare(sql).run(...args),
+      run: async () => {
+        const result = db.prepare(sql).run(...args);
+        return { meta: { changes: Number(result.changes || 0) } };
+      },
       first: async () => db.prepare(sql).get(...args) || null,
       all: async () => ({ results: db.prepare(sql).all(...args) }),
     }) };
@@ -56,7 +59,10 @@ class SQLiteD1 {
     this.sqlite.exec('BEGIN');
     try {
       const results = [];
-      for (const statement of statements) results.push({ meta: { changes: Number((await statement.run()).changes || 0) } });
+      for (const statement of statements) {
+        const result = await statement.run();
+        results.push({ meta: { changes: Number(result.meta?.changes ?? result.changes ?? 0) } });
+      }
       this.sqlite.exec('COMMIT');
       return results;
     } catch (error) {
@@ -252,6 +258,6 @@ test('live Catalog cap reconciliation limits excess HP/NP and never refills lowe
   await syncPlayerCatalogCaps({ DB }, 10);
   const above = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
   const below = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=2').bind().first();
-  assert.deepEqual(above, { hp: 205, max_hp: 205, np: 210, max_np: 210 });
-  assert.deepEqual(below, { hp: 80, max_hp: 205, np: 100, max_np: 210 });
+  assert.deepEqual({ ...above }, { hp: 205, max_hp: 205, np: 210, max_np: 210 });
+  assert.deepEqual({ ...below }, { hp: 80, max_hp: 205, np: 100, max_np: 210 });
 });
