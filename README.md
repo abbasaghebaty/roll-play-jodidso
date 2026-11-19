@@ -13,6 +13,7 @@
 │   ├── 0001_combat_actions.sql
 │   └── 0002_combat_turn_claim.sql
 ├── docs/
+│   ├── character-selection.md
 │   └── jujutsu/
 │       ├── README.md
 │       ├── DECISIONS.md
@@ -141,7 +142,7 @@
 
 ### نکته‌ی مهم درباره‌ی داده‌ها
 
-تعریف شخصیت‌ها، تکنیک‌ها و دفاع‌ها در فایل‌های JavaScript است؛ D1 وضعیت هر بازیکن را در زمان بازی نگه می‌دارد. هنگام `/join`، مقادیر پایه‌ی HP و NP شخصیت در ردیف بازیکن کپی می‌شوند. بنابراین تغییر HP/NP پایه در فایل شخصیت‌ها، بازیکنانی را که قبلاً وارد بازی شده‌اند به‌صورت خودکار به‌روزرسانی نمی‌کند.
+تعریف شخصیت‌ها، تکنیک‌ها و دفاع‌ها در فایل‌های JavaScript است؛ D1 وضعیت هر بازیکن را در زمان بازی نگه می‌دارد. هنگام تأیید انتخاب خصوصی، بازیکن جدید با سقف‌های Catalog ساخته می‌شود؛ تغییر کاراکتر سقف‌ها را عوض می‌کند اما HP/NP جاری را بازیابی نمی‌کند. پس از Deploy نیز `syncPlayerCatalogCaps` سقف‌های جدید را برای بازیکنان موجود اعمال می‌کند.
 
 ## تنظیمات و راه‌اندازی
 
@@ -169,8 +170,8 @@ npx wrangler tail
 برای شروع هر تغییر، فقط از فایل مرتبط شروع کن:
 
 - **شخصیت جدید یا HP/NP پایه:** فایل فرنچایز مربوط در `src/data/catalog/characters/`؛ برای اتصال/جست‌وجو `src/data/registry/`
-- **تکنیک و مشخصات آن:** `src/data/techniques.js`؛ **فرمول حمله/هزینه NP:** `src/game/rules/attack.js`؛ **رنک حمله:** `src/game/rules/ranks/attack.js`
-- **تعریف دفاع:** `src/data/defenses.js`؛ **فرمول دفاع:** `src/game/rules/defense.js`؛ **رنک دفاع:** `src/game/rules/ranks/defense.js`
+- **تکنیک و مشخصات آن:** فایل فرنچایز مربوط در `src/data/catalog/techniques/`؛ **فرمول حمله/هزینه NP:** `src/game/rules/attack.js`؛ **رنک حمله:** `src/game/rules/ranks/attack.js`
+- **تعریف دفاع:** `src/data/catalog/defenses/`؛ **فرمول دفاع:** `src/game/rules/defense.js`؛ **رنک دفاع:** `src/game/rules/ranks/defense.js`
 - **قوانین نوبت، زنده‌بودن، برنده یا دمیج در دیتابیس:** `src/game/engine.js`
 - **انتخاب خصوصی:** `src/game/selection/requests.js` (Session و درخواست D1)، `resolver.js` (جست‌وجو و تأیید)، `src/commands/index.js` (مسیر پیام خصوصی)
 - **پنل مبارزه:** `src/game/ui/panel.js`؛ **پیام‌ها و منوها:** `src/game/ui/prompts.js`؛ **callbackهای مبارزه:** `src/game/ui/callbacks.js`
