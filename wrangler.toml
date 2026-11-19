@@ -11,6 +11,8 @@ database_name = "anime-rpg"
 database_id = "a94e7427-3f74-4021-bd43-e3dbaada4795"
 
 [vars]
+# Public Telegram username used to build private character-selection deep links.
+BOT_USERNAME = "abbas_developerbot"
 # آیدی عددی مسترهای گروه (چند نفر را با ویرگول جدا کن)
 MASTER_IDS = "7548075013"
 # آیدی عددی سازنده/تستر که باید گزارش‌ها و لاگ‌ها را ببیند (با /id در ربات پیدا می‌شود).
