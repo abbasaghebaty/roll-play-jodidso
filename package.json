@@ -1,0 +1,12 @@
+{
+  "name": "anime-rpg-bot",
+  "private": true,
+  "scripts": {
+    "test": "node --experimental-default-type=module --test tests/*.test.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply anime-rpg --local",
+    "db:migrate:remote": "wrangler d1 migrations apply anime-rpg --remote"
+  },
+  "devDependencies": {
+    "wrangler": "4.153.0"
+  }
+}
