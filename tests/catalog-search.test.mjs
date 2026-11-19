@@ -91,7 +91,7 @@ test('short names use a stricter threshold and inactive characters are excluded'
 test('ambiguous results remain multiple choices and pagination reports remaining results', () => {
   const records = Array.from({ length: 7 }, (_, i) => ({
     id: `id_${i}`, code: `CODE_${i}`,
-    name: { fa: `گوجو ${i}`, en: `Gojo ${i}` }, active: true,
+    name: { fa: `گوجو ${i}`, en: 'Gojo' }, active: true,
   }));
   const first = searchCharacterRecords('Gojo', records, { limit: 3 });
   const second = searchCharacterRecords('Gojo', records, { limit: 3, offset: 3 });
