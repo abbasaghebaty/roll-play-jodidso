@@ -237,7 +237,9 @@ test('migration 0003 preserves existing game rows and adds only selection metada
   const DB = new DatabaseSync(':memory:');
   const migration = await readFile(new URL('../migrations/0003_private_character_selection.sql', import.meta.url), 'utf8');
   DB.exec('CREATE TABLE games(chat_id INTEGER PRIMARY KEY,status TEXT,turn_user INTEGER)');
+  DB.exec('CREATE TABLE players(chat_id INTEGER,user_id INTEGER,char_key TEXT,hp INTEGER,np INTEGER,PRIMARY KEY(chat_id,user_id))');
   DB.exec("INSERT INTO games VALUES(10,'lobby',0)");
+  DB.exec("INSERT INTO players VALUES(10,77,'yuji',80,100)");
   DB.exec(migration);
   const row = DB.prepare('SELECT * FROM games WHERE chat_id=10').get();
   assert.equal(row.status, 'lobby');
@@ -245,6 +247,8 @@ test('migration 0003 preserves existing game rows and adds only selection metada
   assert.match(row.session_id, /^[a-f0-9]{32}$/);
   assert.equal(row.selection_token_hash, null);
   assert.ok(row.selection_expires_at);
+  const existingPlayer = DB.prepare('SELECT * FROM players WHERE chat_id=10 AND user_id=77').get();
+  assert.deepEqual({ ...existingPlayer }, { chat_id: 10, user_id: 77, char_key: 'yuji', hp: 80, np: 100 });
   assert.equal(DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='character_selection_requests'").get().name,
     'character_selection_requests');
 });
@@ -260,4 +264,13 @@ test('live Catalog cap reconciliation limits excess HP/NP and never refills lowe
   const below = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=2').bind().first();
   assert.deepEqual({ ...above }, { hp: 205, max_hp: 205, np: 210, max_np: 210 });
   assert.deepEqual({ ...below }, { hp: 80, max_hp: 205, np: 100, max_np: 210 });
+});
+
+test('expired shared lobby tokens cannot start new private requests', async () => {
+  const DB = new SQLiteD1();
+  const session = await setupLobby(DB);
+  await DB.prepare("UPDATE games SET selection_expires_at=datetime('now','-1 minute') WHERE chat_id=10").bind().run();
+  const result = await newRequest(DB, session, 101);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'closed_or_invalid_session');
 });
