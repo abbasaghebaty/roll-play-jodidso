@@ -21,6 +21,8 @@
 ├── tests/
 │   ├── rules.test.mjs
 │   ├── atomic-combat.test.mjs
+│   ├── catalog-search.test.mjs
+│   ├── private-selection.test.mjs
 │   └── import-paths.test.mjs
 ├── .github/workflows/validate.yml
 └── src/
@@ -90,9 +92,14 @@
 
 | فایل | مسئولیت |
 |---|---|
-| `src/data/characters.js` | فهرست شخصیت‌ها و مشخصات پایه: نام، HP، NP و کلید تکنیک‌های مجاز هر شخصیت |
-| `src/data/techniques.js` | تعریف تکنیک‌ها: نام، قدرت پایه، نوع حمله، رنک صریح (در تکنیک‌های map‌شده) و ویژگی‌هایی مثل رایگان بودن یا تستی بودن |
-| `src/data/defenses.js` | تعریف دفاع‌ها، رنک canonical و پارامترهای محاسبه‌ی مقدار دفاع |
+| `src/data/catalog/characters/` | منبع canonical شخصیت‌ها بر اساس فرنچایز؛ شناسه و کد پایدار، نام‌ها، سقف منابع و تکنیک‌های مجاز |
+| `src/data/registry/` | دسترسی مرکزی به شخصیت/تکنیک با ID و Code و جست‌وجوی دقیق/تقریبی صفحه‌بندی‌شده |
+| `src/data/validation/` | اعتبارسنجی شناسه‌ها، کدها، مقادیر و ارجاع تکنیک‌ها؛ داده انگلیسی ناقص به‌صورت warning گزارش می‌شود |
+| `src/data/characters.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat؛ منبع canonical در `data/catalog/` است |
+| `src/data/catalog/techniques/` | داده canonical تکنیک‌ها؛ مقادیر Rank/Base/نوع/هزینه رایگان مطابق داده قبلی |
+| `src/data/techniques.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat |
+| `src/data/catalog/defenses/` | داده canonical دفاع‌ها؛ فرمول‌ها همچنان در `game/rules/` هستند |
+| `src/data/defenses.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat |
 
 **برای اضافه یا اصلاح کردن شخصیت، تکنیک یا دفاع، ابتدا فایل داده‌ی مربوط به آن را تغییر بده.** اتصال تکنیک‌های هر شخصیت از طریق کلیدهای موجود در `characters.js` انجام می‌شود؛ کلید تکنیک باید در `techniques.js` نیز تعریف شده باشد.
 
@@ -120,7 +127,8 @@
 
 | جدول | کاربرد |
 |---|---|
-| `games` | وضعیت هر بازی در هر چت و شناسه‌ی بازیکن نوبت‌دار |
+| `games` | وضعیت بازی هر چت، شناسه Session مستقل و Hash شناسه‌ی لینک Lobby |
+| `character_selection_requests` | درخواست خصوصی مستقل برای هر کاربر؛ متصل به چت، Session، Private Chat، وضعیت و انقضا |
 | `players` | بازیکنان هر بازی، کلید شخصیت انتخابی و وضعیت جاری HP/NP، تیم و وضعیت‌های جانبی |
 | `pending` | حمله‌هایی که ثبت شده‌اند و هنوز دفاعشان تعیین تکلیف نشده |
 | `bot_msgs` | پیام‌های موقت ربات که برای پاک‌سازی باید شناسه‌شان نگهداری شود |
@@ -141,7 +149,8 @@
 - فایل ورودی: `src/index.js`
 - دیتابیس D1 متصل‌شده: `anime-rpg`
 - Binding دیتابیس در کد: `env.DB`
-- تنظیمات غیرمحرمانه مانند `MASTER_IDS` و `OWNER_IDS` در `wrangler.toml` قرار دارند.
+- تنظیمات غیرمحرمانه مانند `MASTER_IDS`، `OWNER_IDS` و `BOT_USERNAME` در `wrangler.toml` قرار دارند.
+- نام کاربری ربات فقط از `[vars].BOT_USERNAME` خوانده می‌شود؛ لینک انتخاب خصوصی از این مقدار و شناسه Session ساخته می‌شود.
 - توکن ربات باید به‌صورت secret با نام `BOT_TOKEN` تنظیم شود.
 - `WEBHOOK_SECRET` اختیاری است؛ اگر تنظیم شود، درخواست وبهوک باید هدر معتبر تلگرام را داشته باشد.
 
@@ -159,11 +168,12 @@ npx wrangler tail
 
 برای شروع هر تغییر، فقط از فایل مرتبط شروع کن:
 
-- **شخصیت جدید یا HP/NP پایه:** `src/data/characters.js`
+- **شخصیت جدید یا HP/NP پایه:** فایل فرنچایز مربوط در `src/data/catalog/characters/`؛ برای اتصال/جست‌وجو `src/data/registry/`
 - **تکنیک و مشخصات آن:** `src/data/techniques.js`؛ **فرمول حمله/هزینه NP:** `src/game/rules/attack.js`؛ **رنک حمله:** `src/game/rules/ranks/attack.js`
 - **تعریف دفاع:** `src/data/defenses.js`؛ **فرمول دفاع:** `src/game/rules/defense.js`؛ **رنک دفاع:** `src/game/rules/ranks/defense.js`
 - **قوانین نوبت، زنده‌بودن، برنده یا دمیج در دیتابیس:** `src/game/engine.js`
-- **پنل مبارزه:** `src/game/ui/panel.js`؛ **پیام‌ها و منوها:** `src/game/ui/prompts.js`؛ **callbackها:** `src/game/ui/callbacks.js`
+- **انتخاب خصوصی:** `src/game/selection/requests.js` (Session و درخواست D1)، `resolver.js` (جست‌وجو و تأیید)، `src/commands/index.js` (مسیر پیام خصوصی)
+- **پنل مبارزه:** `src/game/ui/panel.js`؛ **پیام‌ها و منوها:** `src/game/ui/prompts.js`؛ **callbackهای مبارزه:** `src/game/ui/callbacks.js`
 - **دریافت و مسیریابی دستورها:** `src/commands/index.js`؛ **عملیات مستر:** `src/commands/admin.js`؛ **عملیات بازیکن:** `src/commands/players.js`؛ **حمله و دفاع:** `src/commands/combat.js`
 - **پیام‌های موقت و پاک‌سازی:** `src/game/cleanup.js`
 - **API تلگرام:** `src/telegram.js`
@@ -186,9 +196,25 @@ npx wrangler tail
 ```bash
 npx wrangler d1 execute anime-rpg --remote --file=./migrations/0001_combat_actions.sql
 npx wrangler d1 execute anime-rpg --remote --file=./migrations/0002_combat_turn_claim.sql
+npx wrangler d1 execute anime-rpg --remote --file=./migrations/0003_private_character_selection.sql
 ```
 
 این دو Migration فقط جدول/ستون/ایندکس افزایشی ایجاد می‌کنند و داده‌های قبلی بازی را حذف یا بازنویسی نمی‌کنند.
 
 **قاعده نگهداری:** هر قابلیت فقط پس از پیاده‌سازی و بررسی رفتاری از فهرست کارهای باز به بخش انجام‌شده منتقل می‌شود. وجود مکانیک مشابه در نسخه فعلی به‌تنهایی به معنی تکمیل قانون جدید نیست.
 
+
+
+## انتخاب کاراکتر خصوصی و Catalog مرکزی
+
+- پنل Lobby فقط یک دکمه URL با عنوان «👤 انتخاب کاراکتر» دارد؛ جست‌وجو، پیشنهادها، تأیید و خطاها در Private Chat هستند.
+- [vars].BOT_USERNAME تنها محل تنظیم نام کاربری ربات است. نام کاربری فعلی abbas_developerbot است.
+- هر /newgame یک session_id تصادفی ۱۲۸ بیتی تازه و Hash آن ایجاد می‌کند. Payload لینک مشترک فقط Session را مشخص می‌کند؛ در /start برای هر Telegram user یک درخواست مستقل با private_chat_id و انقضای ۳۰ دقیقه‌ای ساخته می‌شود.
+- Session قدیمی پس از /newgame یا شروع/پایان Lobby قابل استفاده نیست. درخواست‌ها به user، private chat، گروه و Session متصل‌اند.
+- انتخاب کاراکتر تکراری مجاز است؛ کلید اصلی بازیکن همچنان (chat_id,user_id) است. تغییر کاراکتر در Lobby همان ردیف را به‌روزرسانی می‌کند و team، seat، نام و وضعیت‌های جانبی را حفظ می‌کند.
+- HP/NP فعلی با انتخاب مجدد یا Deploy افزایش پیدا نمی‌کنند. سقف‌های جدید از Catalog اعمال می‌شوند و مقدار فعلی فقط در صورت بالاتر بودن از سقف پایین می‌آید.
+- پس از Deploy جدید، اولین آپدیت گروهی یا callback سقف منابع بازیکنان همان گروه را با Catalog جاری هماهنگ می‌کند؛ تکنیک‌ها و دفاع‌ها نیز از داده‌های runtime نسخه Deployشده خوانده می‌شوند.
+- Migration 0003_private_character_selection.sql افزایشی است و داده‌های فعلی بازی/بازیکنان را حذف نمی‌کند. آن را یک‌بار روی D1 اجرا کنید؛ اجرای Migration روی دیتابیس واقعی از این مخزن انجام نشده است.
+- داده‌های فعلی Repository برای ماکی و یوجی نام انگلیسی ندارند؛ این فیلدها null باقی مانده و Validator آن‌ها را به‌صورت warning گزارش می‌کند تا نامی حدس زده نشود.
+
+جزئیات چرخه درخواست، امنیت لینک و وضعیت Migration در docs/character-selection.md آمده است.
