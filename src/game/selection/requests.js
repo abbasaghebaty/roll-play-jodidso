@@ -32,8 +32,10 @@ export function normalizeBotUsername(value) {
 export function buildSelectionUrl(env, game) {
   const username = normalizeBotUsername(env?.BOT_USERNAME);
   const sessionId = String(game?.session_id || '');
-  if (!SESSION_ID_PATTERN.test(sessionId) || !/^[a-f0-9]{64}$/i.test(String(game?.selection_token_hash || ''))) {
-    throw new Error('Game session is missing a valid private-selection identifier or token hash. Run /newgame after applying the selection migration.');
+  const expiresAt = String(game?.selection_expires_at || '').replace(' ', 'T') + 'Z';
+  if (!SESSION_ID_PATTERN.test(sessionId) || !/^[a-f0-9]{64}$/i.test(String(game?.selection_token_hash || '')) ||
+      !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+    throw new Error('Game session is missing a valid or unexpired selection token. Run /newgame after applying the selection migration.');
   }
   return `https://t.me/${username}?start=cs_${sessionId}`;
 }
@@ -58,7 +60,7 @@ export async function createSelectionRequest(env, {
 
   const tokenHash = await sha256Hex(sessionId);
   const game = await first(env.DB,
-    "SELECT * FROM games WHERE session_id=? AND selection_token_hash=? AND status='lobby'",
+    "SELECT * FROM games WHERE session_id=? AND selection_token_hash=? AND status='lobby' AND selection_expires_at>datetime('now')",
     sessionId, tokenHash);
   if (!game) return { ok: false, reason: 'closed_or_invalid_session' };
 
@@ -89,9 +91,10 @@ export async function getActiveSelectionRequest(env, userId, privateChatId) {
   if (!request) return null;
 
   const game = await first(env.DB,
-    "SELECT status,session_id FROM games WHERE chat_id=?",
+    "SELECT status,session_id,selection_expires_at FROM games WHERE chat_id=?",
     request.chat_id);
-  if (!game || game.status !== 'lobby' || game.session_id !== request.session_id) {
+  if (!game || game.status !== 'lobby' || game.session_id !== request.session_id ||
+      !game.selection_expires_at || game.selection_expires_at <= new Date().toISOString().replace('T', ' ').slice(0, 19)) {
     await run(env.DB,
       "UPDATE character_selection_requests SET status='cancelled' WHERE request_id=? AND status='pending'",
       request.request_id);
@@ -113,7 +116,7 @@ export async function validateSelectionRequest(env, requestId, userId, privateCh
     return { ok: false, reason: 'expired_request' };
   }
 
-  const game = await first(env.DB, 'SELECT status,session_id FROM games WHERE chat_id=?', request.chat_id);
+  const game = await first(env.DB, 'SELECT status,session_id,selection_expires_at FROM games WHERE chat_id=?', request.chat_id);
   if (!game || game.status !== 'lobby' || game.session_id !== request.session_id) {
     await run(env.DB,
       "UPDATE character_selection_requests SET status='cancelled' WHERE request_id=? AND status='pending'",
