@@ -14,12 +14,6 @@ export function techDamage(tech, finalRoll) {
   return Math.max(0, base + STEP * bonusSteps);
 }
 
-// Negative finalRoll self-damage is half the damage for its positive mirror.
-export function techSelfDamage(tech, finalRoll) {
-  if (!Number.isFinite(Number(finalRoll)) || Number(finalRoll) >= 0) return 0;
-  return Math.floor(techDamage(tech, Math.abs(Number(finalRoll))) / 2);
-}
-
 export function npCost(dmg, kind = "normal") {
   const base = Math.floor(Math.max(0, Number(dmg) || 0) / 2 / 5) * 5 + 5;
   if (kind === "aoe") return base + AOE_EXTRA;
