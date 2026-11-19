@@ -2,12 +2,16 @@
 -- Apply once to the existing D1 database. Existing game rows and player data are preserved.
 ALTER TABLE games ADD COLUMN session_id TEXT;
 ALTER TABLE games ADD COLUMN selection_token_hash TEXT;
+ALTER TABLE games ADD COLUMN selection_expires_at TEXT;
 
 -- Existing rows receive an opaque legacy session id, but no usable selection hash.
 -- A fresh /newgame creates a new authenticated session and a new lobby link.
 UPDATE games
 SET session_id = lower(hex(randomblob(16)))
 WHERE session_id IS NULL;
+
+-- Legacy sessions must not accept deep links; /newgame creates a fresh expiring link.
+UPDATE games SET selection_expires_at=datetime('now') WHERE selection_expires_at IS NULL;
 
 CREATE UNIQUE INDEX idx_games_session_id
 ON games(session_id)
