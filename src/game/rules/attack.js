@@ -14,14 +14,19 @@ export function techDamage(tech, finalRoll) {
   return Math.max(0, base + STEP * bonusSteps);
 }
 
-// Compatibility only: preserve the pre-existing negative-roll self-damage amount
-// until the source conflict between the half-damage rule and its numeric example is resolved.
-export function legacySelfDamage(tech, finalRoll) {
-  if (!tech || !Number.isFinite(Number(finalRoll)) || Number(finalRoll) >= 0) return 0;
-  const rankBase = tech.rank ? getAttackRankBaseDamage(tech.rank) : null;
-  const base = rankBase ?? (Number.isFinite(Number(tech.base)) ? Number(tech.base) : null);
-  if (base === null) return 0;
-  return Math.max(0, base + STEP * (Math.abs(Number(finalRoll)) - 1));
+// Self-damage is half the positive mirror damage, rounded down to a multiple of five.
+export function selfDamageFromMirrorDamage(mirrorDamage) {
+  const damage = Number(mirrorDamage);
+  if (!Number.isFinite(damage) || damage <= 0) return 0;
+  return Math.floor((damage / 2) / 5) * 5;
+}
+
+// Convert a failed finalRoll into its mirrored positive damage before applying the rule.
+export function techSelfDamage(tech, finalRoll) {
+  const result = Number(finalRoll);
+  if (!Number.isFinite(result) || result >= 0) return 0;
+  const mirrorDamage = techDamage(tech, Math.abs(result));
+  return selfDamageFromMirrorDamage(mirrorDamage);
 }
 
 export function npCost(dmg, kind = "normal") {
