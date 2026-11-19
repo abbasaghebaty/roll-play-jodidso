@@ -11,7 +11,8 @@
 ├── schema.sql
 ├── migrations/
 │   ├── 0001_combat_actions.sql
-│   └── 0002_combat_turn_claim.sql
+│   ├── 0002_combat_turn_claim.sql
+│   └── 0003_private_character_selection.sql
 ├── docs/
 │   ├── character-selection.md
 │   └── jujutsu/
@@ -200,7 +201,7 @@ npx wrangler d1 execute anime-rpg --remote --file=./migrations/0002_combat_turn_
 npx wrangler d1 execute anime-rpg --remote --file=./migrations/0003_private_character_selection.sql
 ```
 
-این دو Migration فقط جدول/ستون/ایندکس افزایشی ایجاد می‌کنند و داده‌های قبلی بازی را حذف یا بازنویسی نمی‌کنند.
+این Migrationها فقط جدول/ستون/ایندکس افزایشی ایجاد می‌کنند و داده‌های قبلی بازی را حذف یا بازنویسی نمی‌کنند.
 
 **قاعده نگهداری:** هر قابلیت فقط پس از پیاده‌سازی و بررسی رفتاری از فهرست کارهای باز به بخش انجام‌شده منتقل می‌شود. وجود مکانیک مشابه در نسخه فعلی به‌تنهایی به معنی تکمیل قانون جدید نیست.
 
