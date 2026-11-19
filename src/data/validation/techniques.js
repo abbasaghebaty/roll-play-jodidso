@@ -1,5 +1,6 @@
 export function validateTechniques(techniques) {
   const errors = [];
+  const warnings = [];
   const ids = new Set();
   const codes = new Set();
   const keys = new Set();
@@ -12,10 +13,12 @@ export function validateTechniques(techniques) {
     ids.add(item.id);
     codes.add(String(item.code || '').toUpperCase());
     keys.add(item.key);
-    if (!item.name?.fa || !item.name?.en) errors.push(`${at}: Persian and English names are required`);
+    if (!item.name?.fa) errors.push(`${at}: Persian name is required`);
+    if (!item.name?.en) warnings.push(`${at}: English label is missing from source data`);
     if (!Number.isFinite(item.base) || item.base < 0) errors.push(`${at}: invalid base damage`);
     if (!item.rank) errors.push(`${at}: rank is required`);
     if (!['normal', 'aoe', 'undefendable'].includes(item.kind)) errors.push(`${at}: invalid technique kind`);
+    if (typeof item.active !== 'boolean') errors.push(`${at}: active must be an explicit boolean`);
   }
-  return errors;
+  return { errors, warnings };
 }
