@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS games (
   status TEXT NOT NULL DEFAULT 'lobby',
   turn_user INTEGER NOT NULL DEFAULT 0,
   session_id TEXT,
-  selection_token_hash TEXT
+  selection_token_hash TEXT,
+  selection_expires_at TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_games_session_id
 ON games(session_id) WHERE session_id IS NOT NULL;
