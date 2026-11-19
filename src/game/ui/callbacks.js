@@ -64,7 +64,7 @@ export async function handleBattleCallback(query, env, handlers) {
     const started = await batch(env.DB, [
       { sql: "UPDATE games SET status='active', turn_user=? WHERE chat_id=? AND status='lobby'",
         args: [players[0].user_id, chat] },
-      { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND session_id=? AND status='pending' AND changes()>=0",
+      { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND session_id=? AND status='pending'",
         args: [chat, game.session_id] },
     ]);
     if ((started?.[0]?.meta?.changes || 0) !== 1) {
