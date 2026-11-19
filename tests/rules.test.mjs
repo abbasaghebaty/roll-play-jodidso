@@ -77,6 +77,14 @@ test('positive finalRoll applies one +5 damage step per five points after the fi
   assert.equal(legacySelfDamage(tech, 0), 0);
 });
 
+test('zero finalRoll stays neutral and negative finalRoll preserves the existing self-damage path', () => {
+  const tech = { base: 20 };
+  assert.equal(techDamage(tech, 0), 0);
+  assert.equal(techDamage(tech, -3), 0);
+  assert.equal(legacySelfDamage(tech, -3), 30);
+  assert.equal(legacySelfDamage(tech, 0), 0);
+});
+
 test('NP cost helper retains its configured formula', () => {
   assert.equal(techDamage(null, 3), 0);
   assert.equal(npCost(20), 15);
