@@ -1,23 +1,33 @@
 // Master-only and administrative game commands.
 // Numerical combat rules belong in src/game/rules/, not in this module.
-import { run } from '../db.js';
+import { run, batch } from '../db.js';
 import { getGame, getPlayer, alivePlayers, checkWin } from '../game/engine.js';
 import { say, isMaster, resolveId } from '../util.js';
 import { mention, esc } from '../telegram.js';
 import { ensureBattlePanel, refreshBattlePanel } from '../game/ui.js';
 import { logEvent } from '../log.js';
 import { sayThenRefresh } from './helpers.js';
+import { createGameSession } from '../game/selection/requests.js';
 
 export async function newgame(ctx) {
   if (!isMaster(ctx)) return say(ctx, 'فقط مستر می‌تواند بازی بسازد.');
 
   const { env, chat } = ctx;
 
-  await run(env.DB, "INSERT OR REPLACE INTO games (chat_id, status, turn_user) VALUES (?, 'lobby', 0)", chat);
-  await run(env.DB, 'DELETE FROM players WHERE chat_id=?', chat);
-  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
-  await run(env.DB, 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1', chat);
-  await run(env.DB, 'DELETE FROM battle_ui WHERE chat_id=?', chat);
+  const session = await createGameSession();
+  await batch(env.DB, [
+    { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND status='pending'",
+      args: [chat] },
+    { sql: `INSERT INTO games (chat_id,status,turn_user,session_id,selection_token_hash)
+      VALUES (?,'lobby',0,?,?)
+      ON CONFLICT(chat_id) DO UPDATE SET status='lobby',turn_user=0,
+        session_id=excluded.session_id,selection_token_hash=excluded.selection_token_hash`,
+      args: [chat, session.sessionId, session.tokenHash] },
+    { sql: 'DELETE FROM players WHERE chat_id=?', args: [chat] },
+    { sql: 'DELETE FROM pending WHERE chat_id=?', args: [chat] },
+    { sql: 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1', args: [chat] },
+    { sql: 'DELETE FROM battle_ui WHERE chat_id=?', args: [chat] },
+  ]);
 
   try {
     await ensureBattlePanel(env, chat);
@@ -36,9 +46,13 @@ export async function endgame(ctx) {
 
   if (!game || game.status === 'ended') return say(ctx, 'بازی فعالی برای بستن وجود ندارد.');
 
-  await run(env.DB, "UPDATE games SET status='ended' WHERE chat_id=?", chat);
-  await run(env.DB, 'DELETE FROM pending WHERE chat_id=?', chat);
-  await run(env.DB, 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1', chat);
+  await batch(env.DB, [
+    { sql: "UPDATE games SET status='ended' WHERE chat_id=? AND status<>'ended'", args: [chat] },
+    { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND session_id=? AND status='pending'",
+      args: [chat, game.session_id] },
+    { sql: 'DELETE FROM pending WHERE chat_id=?', args: [chat] },
+    { sql: 'UPDATE combat_actions SET turn_claim=0 WHERE chat_id=? AND turn_claim=1', args: [chat] },
+  ]);
 
   try {
     await run(env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', chat);
@@ -81,7 +95,12 @@ export async function begin(ctx) {
 
   if (players.length < 2) return say(ctx, 'حداقل ۲ بازیکن لازم است.');
 
-  await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
+  await batch(env.DB, [
+    { sql: "UPDATE games SET status='active', turn_user=? WHERE chat_id=? AND status='lobby'",
+      args: [players[0].user_id, chat] },
+    { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND session_id=? AND status='pending'",
+      args: [chat, game.session_id] },
+  ]);
   await ensureBattlePanel(env, chat);
 }
 
