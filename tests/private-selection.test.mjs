@@ -227,7 +227,7 @@ test('the same character can be selected by multiple users without duplicate pla
   }
   const players = await DB.prepare('SELECT user_id,char_key FROM players WHERE chat_id=10 ORDER BY user_id')
     .bind().all();
-  assert.deepEqual(players.results, [
+  assert.deepEqual(players.results.map((row) => ({ ...row })), [
     { user_id: 101, char_key: 'maki' },
     { user_id: 202, char_key: 'maki' },
   ]);
