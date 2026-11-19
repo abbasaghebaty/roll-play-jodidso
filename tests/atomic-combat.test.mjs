@@ -4,7 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolvePendingDefense, commitAttack } from '../src/game/engine.js';
+import { resolvePendingDefense, commitAttack, commitSelfDamage } from '../src/game/engine.js';
+import { techSelfDamage } from '../src/game/rules/attack.js';
 
 // SQLite-backed D1 adapter: exercises the SQL and ordered transactional batch contract.
 class SQLiteD1 {
@@ -231,4 +232,33 @@ test('ordered D1 migrations add the ledger and turn claim without changing exist
   assert.equal(db.prepare('SELECT hp FROM players WHERE chat_id=77 AND user_id=9').get().hp, 123);
   assert.equal(db.prepare('SELECT turn_user FROM games WHERE chat_id=77').get().turn_user, 9);
   assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_combat_actions_active_turn'").get());
+});
+
+
+test('live self-damage calculation commits the rounded damage atomically for every documented example', async () => {
+  const examples = [
+    { mirrorDamage: 45, expected: 20 },
+    { mirrorDamage: 50, expected: 25 },
+    { mirrorDamage: 35, expected: 15 },
+    { mirrorDamage: 10, expected: 5 },
+  ];
+
+  for (const [index, example] of examples.entries()) {
+    const DB = new SQLiteD1();
+    await seed(DB);
+    const damage = techSelfDamage({ base: example.mirrorDamage }, -1);
+    assert.equal(damage, example.expected);
+
+    const committed = await commitSelfDamage(
+      { DB }, 10, 1, damage, `self-damage-example-${index}`,
+    );
+    assert.equal(committed.applied, true);
+    assert.equal(committed.player.hp, 100 - example.expected);
+    assert.equal(committed.player.alive, 1);
+    const action = await DB.prepare(
+      'SELECT completed,turn_claim FROM combat_actions WHERE operation_id=?',
+    ).bind(`self-damage-example-${index}`).first();
+    assert.equal(action.completed, 1);
+    assert.equal(action.turn_claim, 1);
+  }
 });
