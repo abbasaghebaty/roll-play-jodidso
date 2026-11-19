@@ -64,7 +64,8 @@
 
 ## وضعیت اعتبارسنجی
 
-- تست‌های واحد و مسیر SQLite خودزنی به `tests/rules.test.mjs` و `tests/atomic-combat.test.mjs` اضافه شده‌اند. تعداد و نتیجه نهایی تست‌ها پس از اجرای GitHub Actions روی آخرین commit در همین بخش ثبت می‌شود.
+- مجموعه تست پروژه از سه فایل `tests/rules.test.mjs`، `tests/atomic-combat.test.mjs` و `tests/import-paths.test.mjs` تشکیل شده و اکنون ۲۸ مورد `test()` تعریف دارد؛ این عدد شمارش موارد تست در سورس است، نه ادعای اجرای موفق.
+- فرمان کامل CI برابر `node --experimental-default-type=module --test tests/*.test.mjs` است. در این نوبت اجرای محلی ممکن نشد و وضعیت GitHub Actions برای آخرین commit نیز قابل تأیید نبود؛ بنابراین نتیجه موفق برای اجرای کامل اعلام نمی‌شود.
 - GitHub Actions برای Run `44360155674` موفق است: Syntax تمام فایل‌های JS و ۲۳ تست (۰ شکست).
 - تست SQLite برای SQL و تراکنش batch در `tests/atomic-combat.test.mjs` اجرا شده؛ این تست جایگزین اجرای Production روی Cloudflare D1 نیست.
 - این شاخه هنوز Pull Request ندارد و برای ادغام آماده اعلام نمی‌شود.
