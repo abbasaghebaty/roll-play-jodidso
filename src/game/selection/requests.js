@@ -162,7 +162,7 @@ export async function completeCharacterSelection(env, request, character) {
       sql: `UPDATE players
         SET char_key=?, max_hp=?, hp=MIN(hp,?), max_np=?, np=MIN(np,?)
         WHERE chat_id=? AND user_id=?
-          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby')
+          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby' AND selection_expires_at>datetime('now'))
           AND EXISTS (SELECT 1 FROM character_selection_requests
             WHERE request_id=? AND user_id=? AND private_chat_id=? AND status='pending'
               AND selected_char_key=? AND expires_at>datetime('now'))`,
@@ -174,7 +174,7 @@ export async function completeCharacterSelection(env, request, character) {
         (chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
         SELECT ?,?,?,?,?,?,?,?,COALESCE((SELECT MAX(seat)+1 FROM players WHERE chat_id=?),0)
         WHERE NOT EXISTS (SELECT 1 FROM players WHERE chat_id=? AND user_id=?)
-          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby')
+          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby' AND selection_expires_at>datetime('now'))
           AND EXISTS (SELECT 1 FROM character_selection_requests
             WHERE request_id=? AND user_id=? AND private_chat_id=? AND status='pending'
               AND selected_char_key=? AND expires_at>datetime('now'))`,
@@ -185,7 +185,7 @@ export async function completeCharacterSelection(env, request, character) {
       sql: `UPDATE character_selection_requests SET status='completed',completed_at=datetime('now')
         WHERE request_id=? AND user_id=? AND private_chat_id=? AND status='pending'
           AND expires_at>datetime('now')
-          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby')
+          AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby' AND selection_expires_at>datetime('now'))
           AND EXISTS (SELECT 1 FROM players WHERE chat_id=? AND user_id=? AND char_key=?)`,
       args: [requestId, uid, request.private_chat_id, chat, sessionId, chat, uid, character.key],
     },
