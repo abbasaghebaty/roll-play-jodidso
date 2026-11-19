@@ -15,7 +15,8 @@ import {
   d10,
   rollAttack,
   techDamage,
-  legacySelfDamage,
+  selfDamageFromMirrorDamage,
+  techSelfDamage,
   npCost,
   techNpCost,
   defenseValue,
@@ -73,16 +74,16 @@ test('positive finalRoll applies one +5 damage step per five points after the fi
   assert.equal(techDamage(tech, 9), 25);
   assert.equal(techDamage(tech, 0), 0);
   assert.equal(techDamage(tech, -3), 0);
-  assert.equal(legacySelfDamage(tech, -3), 30);
-  assert.equal(legacySelfDamage(tech, 0), 0);
+  assert.equal(techSelfDamage(tech, -3), 10);
+  assert.equal(techSelfDamage(tech, 0), 0);
 });
 
 test('zero finalRoll stays neutral and negative finalRoll preserves the existing self-damage path', () => {
   const tech = { base: 20 };
   assert.equal(techDamage(tech, 0), 0);
   assert.equal(techDamage(tech, -3), 0);
-  assert.equal(legacySelfDamage(tech, -3), 30);
-  assert.equal(legacySelfDamage(tech, 0), 0);
+  assert.equal(techSelfDamage(tech, -3), 10);
+  assert.equal(techSelfDamage(tech, 0), 0);
 });
 
 test('NP cost helper retains its configured formula', () => {
