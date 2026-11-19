@@ -167,7 +167,7 @@ test('character changes preserve current resources and independent player fields
   const session = await setupLobby(DB);
   await DB.prepare(`INSERT INTO players
     (chat_id,user_id,name,char_key,hp,max_hp,np,max_np,team,alive,seat,poisoned,drained,last_tech,spam)
-    VALUES(10,101,'Original Name','yuji',80,205,100,210,'red',1,7,1,1,'blackflash',3)`).bind().run();
+    VALUES(10,101,'Original Name','yuji',250,250,100,210,'red',1,7,1,1,'blackflash',3)`).bind().run();
 
   const created = await newRequest(DB, session, 101);
   const maki = getCharacterByKey('maki');
@@ -176,7 +176,7 @@ test('character changes preserve current resources and independent player fields
     .bind(created.request.request_id).first();
   const result = await completeCharacterSelection({ DB }, request, maki);
   assert.equal(result.applied, true);
-  assert.equal(result.player.hp, 80);
+  assert.equal(result.player.hp, 200);
   assert.equal(result.player.max_hp, 200);
   assert.equal(result.player.np, 0);
   assert.equal(result.player.max_np, 0);
