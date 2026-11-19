@@ -21,7 +21,7 @@ class SQLiteD1 {
       CREATE TABLE games (
         chat_id INTEGER PRIMARY KEY, status TEXT NOT NULL,
         turn_user INTEGER NOT NULL DEFAULT 0, session_id TEXT,
-        selection_token_hash TEXT
+        selection_token_hash TEXT, selection_expires_at TEXT
       );
       CREATE TABLE players (
         chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, name TEXT NOT NULL,
@@ -68,8 +68,8 @@ class SQLiteD1 {
 
 async function setupLobby(DB) {
   const session = await createGameSession();
-  await DB.prepare('INSERT INTO games(chat_id,status,turn_user,session_id,selection_token_hash) VALUES(10,\'lobby\',0,?,?)')
-    .bind(session.sessionId, session.tokenHash).run();
+  await DB.prepare(`INSERT INTO games(chat_id,status,turn_user,session_id,selection_token_hash,selection_expires_at)
+    VALUES(10,'lobby',0,?,?,datetime('now','+7 days'))`).bind(session.sessionId, session.tokenHash).run();
   return session;
 }
 
@@ -85,10 +85,16 @@ test('bot username validation and Telegram deep-link payload stay within limits'
   assert.throws(() => normalizeBotUsername(''), /BOT_USERNAME/);
   assert.throws(() => normalizeBotUsername('invalid username'), /BOT_USERNAME/);
   const session = await createGameSession();
-  const url = buildSelectionUrl({ BOT_USERNAME: 'abbas_developerbot' }, { session_id: session.sessionId });
+  const url = buildSelectionUrl({ BOT_USERNAME: 'abbas_developerbot' }, {
+    session_id: session.sessionId, selection_token_hash: session.tokenHash,
+    selection_expires_at: new Date(Date.now() + 86400000).toISOString().replace('T', ' ').slice(0, 19),
+  });
   assert.equal(url, `https://t.me/abbas_developerbot?start=cs_${session.sessionId}`);
   assert.ok(`cs_${session.sessionId}`.length <= 64);
-  assert.throws(() => buildSelectionUrl({}, { session_id: session.sessionId }), /BOT_USERNAME/);
+  assert.throws(() => buildSelectionUrl({}, {
+    session_id: session.sessionId, selection_token_hash: session.tokenHash,
+    selection_expires_at: new Date(Date.now() + 86400000).toISOString().replace('T', ' ').slice(0, 19),
+  }), /BOT_USERNAME/);
 });
 
 test('the shared session link creates independent requests for different Telegram users', async () => {
@@ -232,6 +238,7 @@ test('migration 0003 preserves existing game rows and adds only selection metada
   assert.equal(row.turn_user, 0);
   assert.match(row.session_id, /^[a-f0-9]{32}$/);
   assert.equal(row.selection_token_hash, null);
+  assert.ok(row.selection_expires_at);
   assert.equal(DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='character_selection_requests'").get().name,
     'character_selection_requests');
 });
