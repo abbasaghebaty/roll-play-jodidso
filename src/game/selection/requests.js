@@ -117,7 +117,8 @@ export async function validateSelectionRequest(env, requestId, userId, privateCh
   }
 
   const game = await first(env.DB, 'SELECT status,session_id,selection_expires_at FROM games WHERE chat_id=?', request.chat_id);
-  if (!game || game.status !== 'lobby' || game.session_id !== request.session_id) {
+  if (!game || game.status !== 'lobby' || game.session_id !== request.session_id ||
+      !game.selection_expires_at || game.selection_expires_at <= new Date().toISOString().replace('T', ' ').slice(0, 19)) {
     await run(env.DB,
       "UPDATE character_selection_requests SET status='cancelled' WHERE request_id=? AND status='pending'",
       requestId);
@@ -136,7 +137,7 @@ export async function setSelectionCandidate(env, request, characterKey) {
   const character = getCharacterByKey(characterKey);
   if (!character || !character.active || character.hidden) return false;
   const result = await run(env.DB,
-    "UPDATE character_selection_requests SET selected_char_key=? WHERE request_id=? AND status='pending' AND expires_at>datetime('now') AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby')",
+    "UPDATE character_selection_requests SET selected_char_key=? WHERE request_id=? AND status='pending' AND expires_at>datetime('now') AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby' AND selection_expires_at>datetime('now'))",
     character.key, request.request_id, request.chat_id, request.session_id);
   return (result?.meta?.changes || 0) === 1;
 }
