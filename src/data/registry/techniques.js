@@ -1,4 +1,5 @@
 import { TECHNIQUE_CATALOG } from '../catalog/techniques/index.js';
+import { getCharacterById, getCharacterByKey } from './characters.js';
 
 const byId = new Map(TECHNIQUE_CATALOG.map((item) => [item.id, item]));
 const byCode = new Map(TECHNIQUE_CATALOG.map((item) => [item.code.toUpperCase(), item]));
@@ -22,7 +23,7 @@ export function getTechniqueByKey(key) {
 
 export function getTechniquesByCharacter(characterOrId) {
   const character = typeof characterOrId === 'string'
-    ? byId.get(characterOrId)
+    ? (getCharacterById(characterOrId) || getCharacterByKey(characterOrId))
     : characterOrId;
   if (!character) return [];
   return (character.techniqueIds || [])
