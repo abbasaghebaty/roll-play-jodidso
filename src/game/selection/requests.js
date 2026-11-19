@@ -186,8 +186,9 @@ export async function completeCharacterSelection(env, request, character) {
         WHERE request_id=? AND user_id=? AND private_chat_id=? AND status='pending'
           AND expires_at>datetime('now')
           AND EXISTS (SELECT 1 FROM games WHERE chat_id=? AND session_id=? AND status='lobby' AND selection_expires_at>datetime('now'))
+          AND selected_char_key=?
           AND EXISTS (SELECT 1 FROM players WHERE chat_id=? AND user_id=? AND char_key=?)`,
-      args: [requestId, uid, request.private_chat_id, chat, sessionId, chat, uid, character.key],
+      args: [requestId, uid, request.private_chat_id, chat, sessionId, character.key, chat, uid, character.key],
     },
   ];
   const results = await batch(env.DB, statements);
