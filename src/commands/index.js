@@ -4,6 +4,7 @@ import { logEvent } from '../log.js';
 import { own, isMaster } from '../util.js';
 import * as R from '../report.js';
 import { handleBattleCallback } from '../game/ui.js';
+import { syncPlayerCatalogCaps } from '../game/engine.js';
 import { handleSelectionCallback, handleSelectionText, startCharacterSelection } from '../game/selection/index.js';
 import { newgame, endgame, team, begin, buff, effect } from './admin.js';
 import { chars, techs, defenses, status, help } from './players.js';
@@ -13,6 +14,10 @@ const ANON_ADMIN_ID = 1087968824; // Telegram's fixed id for anonymous group adm
 
 export async function handleUpdate(update, env) {
   if (update.callback_query) {
+    const callbackChat = update.callback_query.message?.chat;
+    if (callbackChat && callbackChat.type !== 'private') {
+      await syncPlayerCatalogCaps(env, callbackChat.id);
+    }
     if (String(update.callback_query.data || '').startsWith('cs:')) {
       return handleSelectionCallback(update.callback_query, env);
     }
@@ -29,6 +34,9 @@ export async function handleUpdate(update, env) {
     return;
   }
 
+  if (m?.chat && m.chat.type !== 'private') {
+    await syncPlayerCatalogCaps(env, m.chat.id);
+  }
   if (!m || !m.from || typeof m.text !== 'string') return;
   const priv = m.chat.type === 'private';
   const isCommand = m.text.trim().startsWith('/');
