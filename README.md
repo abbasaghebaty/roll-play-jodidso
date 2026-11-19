@@ -10,6 +10,7 @@
 ├── wrangler.toml
 ├── schema.sql
 ├── migrations/
+│   ├── 0000_initial_schema.sql
 │   ├── 0001_combat_actions.sql
 │   ├── 0002_combat_turn_claim.sql
 │   └── 0003_private_character_selection.sql
@@ -130,7 +131,7 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 
 ## نقش فایل‌های دیتابیس
 
-فایل `schema.sql` ساختار جدول‌های D1 را تعریف می‌کند. مهم‌ترین جدول‌ها:
+فایل `schema.sql` Snapshot کامل Schema فعلی D1 است؛ تاریخچه تغییرات و اجرای نسخه‌ای Schema در پوشه `migrations/` نگهداری می‌شود. مهم‌ترین جدول‌ها:
 
 | جدول | کاربرد |
 |---|---|
@@ -164,10 +165,14 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 دستورهای اصلی:
 
 ```bash
-npx wrangler d1 execute anime-rpg --remote --file=./schema.sql
+npm install
+npm run db:migrate:local
+npm run db:migrate:remote
 npx wrangler deploy
 npx wrangler tail
 ```
+
+برای جزئیات راه‌اندازی دیتابیس تازه، مهاجرت دیتابیس موجود و ترتیب Migration/Deploy، بخش «Migrationهای D1» را ببینید. اجرای `wrangler deploy` به‌تنهایی Migrationها را اجرا نمی‌کند.
 
 اجرای `schema.sql` برای ایجاد جدول‌های موجود با `IF NOT EXISTS` نوشته شده و قرار نیست داده‌های جدول‌های موجود را پاک کند. اگر ساختار دیتابیس در آینده نیاز به تغییر داشته باشد، قبل از اجرا باید اثر تغییر روی داده‌های فعلی بررسی شود.
 
@@ -198,18 +203,91 @@ npx wrangler tail
 
 ## Migrationهای D1
 
-- **دیتابیس تازه:** اجرای schema.sql کافی است؛ این فایل ساختار فعلی را از ابتدا ایجاد می‌کند. در این حالت Migration شماره 0003 را دوباره اجرا نکنید.
-- **دیتابیس موجود:** Migrationهای 0001 و 0002 مربوط به نسخه‌های قبلی‌اند و اگر قبلاً اجرا شده‌اند تکرارشان نکنید. برای این بازطراحی، فقط Migration زیر را یک‌بار اجرا کنید:
+**منبع اصلی تغییرات Schema پوشه `migrations/` است.** Wrangler نام Migrationهای اعمال‌شده را در جدول داخلی `d1_migrations` نگه می‌دارد و در اجرای بعدی فقط فایل‌های ثبت‌نشده را، به‌ترتیب نام/شماره، اجرا می‌کند. فایل `schema.sql` یک Snapshot از Schema فعلی برای مطالعه و مقایسه است؛ آن را به‌عنوان مسیر معمول Migration اجرا نکنید.
+
+### راه‌اندازی دیتابیس جدید
+
+پس از ساخت دیتابیس D1 جدید، مقدار `database_id` آن را در `wrangler.toml` تنظیم کنید و نام دیتابیس را مطابق binding نگه دارید. سپس از ریشه پروژه اجرا کنید:
 
 ```bash
-npx wrangler d1 execute anime-rpg --remote --file=./migrations/0003_private_character_selection.sql
+npm install
+npm run db:migrate:local
 ```
 
-Migration شماره 0003 ستون‌های Session و انقضا را به games اضافه می‌کند، جدول درخواست‌های خصوصی و ایندکس‌های آن را می‌سازد و داده‌های قبلی بازی/بازیکنان را حذف نمی‌کند. اجرای آن روی D1 واقعی از این مخزن انجام نشده است؛ پیش از Deploy کد جدید باید آن را با پشتیبان مناسب روی دیتابیس اجرا و نتیجه را بررسی کنید.
+برای دیتابیس Remote تازه، پس از اطمینان از نام و شناسه صحیح دیتابیس:
 
-**قاعده نگهداری:** هر قابلیت فقط پس از پیاده‌سازی و بررسی رفتاری از فهرست کارهای باز به بخش انجام‌شده منتقل می‌شود. وجود مکانیک مشابه در نسخه فعلی به‌تنهایی به معنی تکمیل قانون جدید نیست.
+```bash
+npm run db:migrate:remote
+```
 
+این دستورها تمام Migrationها را از `0000_initial_schema.sql` به بعد اجرا می‌کنند. اجرای دوباره فقط Migrationهای اعمال‌نشده را اجرا می‌کند؛ داده‌های موجود Reset یا حذف نمی‌شوند.
 
+### دیتابیس موجود و مهاجرت از روش قدیمی
+
+اگر دیتابیس قبلاً با `schema.sql` یا `d1 execute --file` ساخته/به‌روزرسانی شده باشد، جدول `d1_migrations` ممکن است سابقه‌ای نداشته باشد. در این وضعیت **نباید کورکورانه دستور Remote را اجرا کرد**: Wrangler فایل‌های ثبت‌نشده را اجرا می‌کند و Migrationهای `0002` و `0003` شامل `ALTER TABLE ... ADD COLUMN` هستند که روی ستونی که از قبل وجود دارد خطا می‌دهند.
+
+اگر با بررسی Schema مطمئن شدید دیتابیس قدیمی تمام ساختار پایه و تغییرات `0001` و `0002` را دارد، باید فقط یک‌بار سابقه آن‌ها را در جدول رسمی ثبت کنید تا Wrangler آن‌ها را دوباره اجرا نکند. نمونه ثبت baseline (فقط پس از تأیید ساختار واقعی دیتابیس):
+
+```sql
+CREATE TABLE IF NOT EXISTS d1_migrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+INSERT OR IGNORE INTO d1_migrations (name) VALUES
+  ('0000_initial_schema.sql'),
+  ('0001_combat_actions.sql'),
+  ('0002_combat_turn_claim.sql');
+```
+
+این SQL را به‌عنوان یک عملیات Adopt یک‌باره و کنترل‌شده اجرا کنید؛ این کار Migrationهای Schema را اجرا نمی‌کند، فقط سابقه‌ای را ثبت می‌کند که قبلاً در دیتابیس اعمال شده است. سپس:
+
+```bash
+npm run db:migrate:remote
+```
+
+Wrangler از آن پس `0003_private_character_selection.sql` و Migrationهای بعدی را از مسیر رسمی اجرا و ثبت می‌کند. اگر حتی یکی از پیش‌نیازهای baseline برقرار نیست، این ردیف‌ها را ثبت نکنید؛ ابتدا وضعیت دیتابیس باید جداگانه بررسی و با تاریخچه واقعی آن تطبیق داده شود.
+
+**مهم:** این مخزن به دیتابیس Remote دسترسی خواندن/بررسی Schema نداشته و هیچ Migration Remote اجرا یا baseline نشده است. پس از انتقال دیتابیس یا وقتی سابقه آن نامشخص است، baseline را حدس نزنید.
+
+### اجرای Migration محلی
+
+```bash
+npm run db:migrate:local
+npx wrangler d1 migrations list anime-rpg --local
+```
+
+دیتابیس محلی Wrangler مستقل از دیتابیس Remote است. موفقیت تست Local، وضعیت Migrationهای Remote را اثبات نمی‌کند.
+
+### اجرای Migration روی Remote
+
+```bash
+npx wrangler d1 migrations list anime-rpg --remote
+npm run db:migrate:remote
+npx wrangler d1 migrations list anime-rpg --remote
+```
+
+قبل از اجرا، خروجی فهرست را بررسی کنید، از داده‌ها پشتیبان داشته باشید و مطمئن شوید نام/شناسه D1 درست است. دستور Remote فقط با تأیید صریح مالک دیتابیس اجرا شود.
+
+### افزودن Migration جدید
+
+Migration جدید را با Wrangler بسازید تا شماره بعدی خودکار انتخاب شود:
+
+```bash
+npx wrangler d1 migrations create anime-rpg describe_the_change
+```
+
+فایل تازه را فقط به انتهای تاریخچه اضافه کنید؛ فایل‌های قبلی را ویرایش یا بازنویسی نکنید. SQL باید افزایشی و سازگار با داده‌های موجود باشد. سپس آن را در محیط Local آزمایش کنید و فایل را همراه کد Commit کنید.
+
+### ترتیب صحیح Migration و Deploy
+
+1. Migration را ایجاد و روی دیتابیس Local اجرا/آزمایش کنید.
+2. تغییرات کد و Migration را Commit و CI را بررسی کنید.
+3. روی دیتابیس هدف، ابتدا `npm run db:migrate:remote` را اجرا و نتیجه را با `d1 migrations list` بررسی کنید.
+4. پس از موفقیت Migration، `npx wrangler deploy` را اجرا کنید.
+
+Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به ستون/جدول جدید وابسته است نباید پیش از اعمال Migration متناظر روی دیتابیس هدف Deploy شود.
 
 ## انتخاب کاراکتر خصوصی و Catalog مرکزی
 
@@ -220,7 +298,7 @@ Migration شماره 0003 ستون‌های Session و انقضا را به game
 - انتخاب کاراکتر تکراری مجاز است؛ کلید اصلی بازیکن همچنان (chat_id,user_id) است. تغییر کاراکتر در Lobby همان ردیف را به‌روزرسانی می‌کند و team، seat، نام و وضعیت‌های جانبی را حفظ می‌کند.
 - HP/NP فعلی با انتخاب مجدد یا Deploy افزایش پیدا نمی‌کنند. سقف‌های جدید از Catalog اعمال می‌شوند و مقدار فعلی فقط در صورت بالاتر بودن از سقف پایین می‌آید.
 - پس از Deploy جدید، اولین آپدیت گروهی یا callback سقف منابع بازیکنان همان گروه را با Catalog جاری هماهنگ می‌کند؛ تکنیک‌ها و دفاع‌ها نیز از داده‌های runtime نسخه Deployشده خوانده می‌شوند.
-- Migration 0003_private_character_selection.sql افزایشی است و داده‌های فعلی بازی/بازیکنان را حذف نمی‌کند. آن را یک‌بار روی D1 اجرا کنید؛ اجرای Migration روی دیتابیس واقعی از این مخزن انجام نشده است.
+- Migrationهای D1 از طریق Wrangler و تاریخچه `d1_migrations` مدیریت می‌شوند؛ برای دیتابیس قدیمی ابتدا baseline را طبق راهنمای Migrationهای D1 بررسی کنید.
 - داده‌های فعلی Repository برای ماکی و یوجی نام انگلیسی ندارند؛ این فیلدها null باقی مانده و Validator آن‌ها را به‌صورت warning گزارش می‌کند تا نامی حدس زده نشود.
 
 جزئیات چرخه درخواست، امنیت لینک و وضعیت Migration در docs/character-selection.md آمده است.

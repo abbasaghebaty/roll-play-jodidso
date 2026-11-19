@@ -9,6 +9,7 @@ enabled = true
 binding = "DB"
 database_name = "anime-rpg"
 database_id = "a94e7427-3f74-4021-bd43-e3dbaada4795"
+migrations_dir = "migrations"
 
 [vars]
 # Public Telegram username used to build private character-selection deep links.

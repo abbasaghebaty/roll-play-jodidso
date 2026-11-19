@@ -11,6 +11,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install project tools
+        run: npm install --no-package-lock
+      - name: Apply D1 migrations to a fresh local database
+        run: |
+          rm -rf .wrangler/state
+          npm run db:migrate:local
+      - name: Verify migrations are already applied on a second run
+        run: |
+          npm run db:migrate:local
+          npx wrangler d1 migrations list anime-rpg --local
       - name: Check JavaScript syntax
         run: |
           while IFS= read -r -d '' file; do
