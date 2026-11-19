@@ -86,6 +86,23 @@ test('zero finalRoll stays neutral and negative finalRoll preserves the existing
   assert.equal(techSelfDamage(tech, 0), 0);
 });
 
+test('self-damage rounds half of mirrored damage down to the nearest multiple of five', () => {
+  assert.equal(selfDamageFromMirrorDamage(45), 20);
+  assert.equal(selfDamageFromMirrorDamage(50), 25);
+  assert.equal(selfDamageFromMirrorDamage(35), 15);
+  assert.equal(selfDamageFromMirrorDamage(10), 5);
+  assert.equal(selfDamageFromMirrorDamage(4), 0);
+  assert.equal(selfDamageFromMirrorDamage(0), 0);
+  assert.equal(selfDamageFromMirrorDamage(-10), 0);
+});
+
+test('negative finalRoll uses the mirrored positive attack damage before self-damage rounding', () => {
+  const tech = { base: 45 };
+  assert.equal(techSelfDamage(tech, -1), 20);
+  assert.equal(techSelfDamage(tech, 0), 0);
+  assert.equal(techSelfDamage(tech, 1), 0);
+});
+
 test('NP cost helper retains its configured formula', () => {
   assert.equal(techDamage(null, 3), 0);
   assert.equal(npCost(20), 15);
