@@ -12,6 +12,7 @@ import {
   completeCharacterSelection,
 } from '../src/game/selection/requests.js';
 import { getCharacterByKey } from '../src/data/registry/characters.js';
+import { syncPlayerCatalogCaps } from '../src/game/engine.js';
 
 class SQLiteD1 {
   constructor() {
@@ -233,4 +234,17 @@ test('migration 0003 preserves existing game rows and adds only selection metada
   assert.equal(row.selection_token_hash, null);
   assert.equal(DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='character_selection_requests'").get().name,
     'character_selection_requests');
+});
+
+test('live Catalog cap reconciliation limits excess HP/NP and never refills lower values', async () => {
+  const DB = new SQLiteD1();
+  await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
+    VALUES(10,1,'Above','yuji',250,250,300,300,0)`).bind().run();
+  await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
+    VALUES(10,2,'Below','yuji',80,205,100,210,1)`).bind().run();
+  await syncPlayerCatalogCaps({ DB }, 10);
+  const above = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
+  const below = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=2').bind().first();
+  assert.deepEqual(above, { hp: 205, max_hp: 205, np: 210, max_np: 210 });
+  assert.deepEqual(below, { hp: 80, max_hp: 205, np: 100, max_np: 210 });
 });
