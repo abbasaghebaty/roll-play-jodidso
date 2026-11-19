@@ -1,12 +1,14 @@
-// تکنیک‌ها. kind: normal (عادی) | aoe (همگانی، همه‌ی دشمن‌ها) | undefendable (غیرقابل‌دفاع)
-// base = دمیج پایه (با عدد تاس ۱). به ازای هر عدد بعدی ۵ اضافه می‌شود.
-export const TECHNIQUES = {
-  // punch فقط یک تکنیک موقتی است تا ماکی بتواند بازی کند؛ عددش را رفیقت بدهد.
-  // free: true یعنی NP مصرف نمی‌کند (چون ماکی NP صفر دارد وگرنه هیچ‌وقت نمی‌توانست حمله کند).
-  punch: { name: 'مشت', rank: 'scratch', base: 10, kind: 'normal', free: true },
-  blackflash: { name: 'بلک فلش', rank: 'disaster', base: 40, kind: 'normal' },
+// Backward-compatible runtime adapter. Canonical records live in data/catalog/.
+import { TECHNIQUE_CATALOG } from './catalog/techniques/index.js';
 
-  // فقط برای تست انواع هزینه (در پیوی ربات همه‌ی تکنیک‌ها قابل استفاده‌اند)
-  test_aoe: { name: 'تست همگانی', rank: 'shadow', base: 30, kind: 'aoe', test: true },
-  test_undef: { name: 'تست غیرقابل‌دفاع', rank: 'shadow', base: 30, kind: 'undefendable', test: true },
-};
+export const TECHNIQUES = Object.fromEntries(TECHNIQUE_CATALOG.map((technique) => [
+  technique.key,
+  {
+    name: technique.name.fa,
+    rank: technique.rank,
+    base: technique.base,
+    kind: technique.kind,
+    ...(technique.free ? { free: true } : {}),
+    ...(technique.test ? { test: true } : {}),
+  },
+]));
