@@ -1,10 +1,11 @@
-// Canonical Jujutsu technique records. Combat values intentionally match the legacy data.
+// Canonical Jujutsu technique records. Combat values match the legacy runtime data.
+// English labels are intentionally omitted until supported by source data.
 export const JUJUTSU_TECHNIQUES = [
   {
     id: 'tech_jjk_punch',
     code: 'PUNCH',
     key: 'punch',
-    name: { fa: 'مشت', en: 'Punch' },
+    name: { fa: 'مشت', en: null },
     rank: 'scratch',
     base: 10,
     kind: 'normal',
@@ -15,7 +16,7 @@ export const JUJUTSU_TECHNIQUES = [
     id: 'tech_jjk_blackflash',
     code: 'BLACKFLASH',
     key: 'blackflash',
-    name: { fa: 'بلک فلش', en: 'Black Flash' },
+    name: { fa: 'بلک فلش', en: null },
     rank: 'disaster',
     base: 40,
     kind: 'normal',
@@ -25,7 +26,7 @@ export const JUJUTSU_TECHNIQUES = [
     id: 'tech_jjk_test_aoe',
     code: 'TEST_AOE',
     key: 'test_aoe',
-    name: { fa: 'تست همگانی', en: 'Test AOE' },
+    name: { fa: 'تست همگانی', en: null },
     rank: 'shadow',
     base: 30,
     kind: 'aoe',
@@ -36,7 +37,7 @@ export const JUJUTSU_TECHNIQUES = [
     id: 'tech_jjk_test_undef',
     code: 'TEST_UNDEF',
     key: 'test_undef',
-    name: { fa: 'تست غیرقابل‌دفاع', en: 'Test Undefendable' },
+    name: { fa: 'تست غیرقابل‌دفاع', en: null },
     rank: 'shadow',
     base: 30,
     kind: 'undefendable',
