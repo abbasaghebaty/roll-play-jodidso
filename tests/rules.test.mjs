@@ -15,6 +15,7 @@ import {
   d10,
   rollAttack,
   techDamage,
+  techSelfDamage,
   npCost,
   techNpCost,
   defenseValue,
@@ -54,7 +55,7 @@ test('live techniques resolve their explicit attack rank before calculating dama
   assert.equal(TECHNIQUES.test_undef.rank, 'shadow');
   assert.equal(techDamage(TECHNIQUES.punch, 1), 10);
   assert.equal(techDamage(TECHNIQUES.blackflash, 1), 40);
-  assert.equal(techDamage(TECHNIQUES.test_aoe, 2), 35);
+  assert.equal(techDamage(TECHNIQUES.test_aoe, 2), 30);
   assert.equal(techDamage({ rank: 'unknown', base: 17 }, 1), 17);
 });
 
@@ -64,9 +65,20 @@ test('pain attack rank is free while other ranks retain the configured NP formul
   assert.equal(techNpCost({ free: true, kind: 'normal' }, 20), 0);
 });
 
-test('attack damage and NP cost preserve the existing formulas', () => {
-  assert.equal(techDamage({ base: 20 }, 1), 20);
-  assert.equal(techDamage({ base: 20 }, 3), 30);
+test('positive finalRoll applies one +5 damage step per five points after the first', () => {
+  const tech = { base: 20 };
+  assert.equal(techDamage(tech, 1), 20);
+  assert.equal(techDamage(tech, 5), 20);
+  assert.equal(techDamage(tech, 6), 25);
+  assert.equal(techDamage(tech, 9), 25);
+  assert.equal(techDamage(tech, 0), 0);
+  assert.equal(techDamage(tech, -3), 0);
+  assert.equal(techSelfDamage(tech, -3), 10);
+  assert.equal(techSelfDamage(tech, 0), 0);
+  assert.equal(techSelfDamage(tech, 3), 0);
+});
+
+test('NP cost helper retains its configured formula', () => {
   assert.equal(techDamage(null, 3), 0);
   assert.equal(npCost(20), 15);
   assert.equal(npCost(20, 'aoe'), 25);
