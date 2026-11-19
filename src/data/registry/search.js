@@ -22,7 +22,6 @@ export function damerauLevenshtein(left, right, cutoff = Infinity) {
   for (let j = 0; j <= b.length; j += 1) rows[0][j] = j;
 
   for (let i = 1; i <= a.length; i += 1) {
-    let rowMin = Infinity;
     for (let j = 1; j <= b.length; j += 1) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       let value = Math.min(
@@ -34,11 +33,10 @@ export function damerauLevenshtein(left, right, cutoff = Infinity) {
         value = Math.min(value, rows[i - 2][j - 2] + 1);
       }
       rows[i][j] = value;
-      rowMin = Math.min(rowMin, value);
     }
-    if (rowMin > cutoff) return cutoff + 1;
   }
-  return rows[a.length][b.length];
+  const distance = rows[a.length][b.length];
+  return distance <= cutoff ? distance : cutoff + 1;
 }
 
 function maxDistanceFor(length) {
@@ -53,48 +51,44 @@ function searchableNames(character) {
     .filter(Boolean);
 }
 
-export function searchCharacters(query, { limit = 5 } = {}) {
-  const raw = String(query ?? '').trim();
-  const normalized = normalizeSearchText(raw);
-  const maxResults = Math.max(1, Math.min(20, Number(limit) || 5));
-  if (!normalized) return [];
+export function searchCharacterRecords(query, records, { limit = 5, offset = 0 } = {}) {
+  const normalized = normalizeSearchText(query);
+  const pageSize = Math.max(1, Math.min(20, Math.floor(Number(limit) || 5)));
+  const start = Math.max(0, Math.floor(Number(offset) || 0));
+  if (!normalized) return { items: [], total: 0, offset: start, limit: pageSize, hasMore: false };
 
-  const characters = getSearchableCharacters();
+  const characters = (Array.isArray(records) ? records : []).filter((item) => item.active !== false);
+  const exact = (predicate, matchType) => characters
+    .filter(predicate)
+    .map((character) => ({ character, matchType, distance: 0 }));
 
-  // An exact developer-assigned code always wins over all name matching.
-  const exactCode = characters.filter((item) =>
-    normalizeSearchText(item.code) === normalized
-  );
-  if (exactCode.length) return exactCode.slice(0, maxResults).map((item) => ({
-    character: item, matchType: 'code', distance: 0,
-  }));
+  let matches = exact((item) => normalizeSearchText(item.code) === normalized, 'code');
+  if (!matches.length) matches = exact((item) => normalizeSearchText(item.id) === normalized, 'id');
+  if (!matches.length) matches = exact((item) => searchableNames(item).includes(normalized), 'exact');
 
-  const exactId = characters.filter((item) =>
-    normalizeSearchText(item.id) === normalized
-  );
-  if (exactId.length) return exactId.slice(0, maxResults).map((item) => ({
-    character: item, matchType: 'id', distance: 0,
-  }));
-
-  const exactNames = characters.filter((item) =>
-    searchableNames(item).includes(normalized)
-  );
-  if (exactNames.length) return exactNames.slice(0, maxResults).map((item) => ({
-    character: item, matchType: 'exact', distance: 0,
-  }));
-
-  const threshold = maxDistanceFor(Array.from(normalized).length);
-  const matches = [];
-  for (const character of characters) {
-    let distance = Infinity;
-    for (const name of searchableNames(character)) {
-      distance = Math.min(distance, damerauLevenshtein(normalized, name, threshold));
+  if (!matches.length) {
+    const threshold = maxDistanceFor(Array.from(normalized).length);
+    matches = [];
+    for (const character of characters) {
+      let distance = Infinity;
+      for (const name of searchableNames(character)) {
+        distance = Math.min(distance, damerauLevenshtein(normalized, name, threshold));
+      }
+      if (distance <= threshold) matches.push({ character, matchType: 'fuzzy', distance });
     }
-    if (distance <= threshold) matches.push({ character, matchType: 'fuzzy', distance });
+    matches.sort((a, b) => a.distance - b.distance ||
+      String(a.character.name?.fa || '').localeCompare(String(b.character.name?.fa || ''), 'fa'));
   }
 
-  return matches
-    .sort((a, b) => a.distance - b.distance ||
-      a.character.name.fa.localeCompare(b.character.name.fa, 'fa'))
-    .slice(0, maxResults);
+  return {
+    items: matches.slice(start, start + pageSize),
+    total: matches.length,
+    offset: start,
+    limit: pageSize,
+    hasMore: start + pageSize < matches.length,
+  };
+}
+
+export function searchCharacters(query, options = {}) {
+  return searchCharacterRecords(query, getSearchableCharacters(), options);
 }
