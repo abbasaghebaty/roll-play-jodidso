@@ -2,8 +2,33 @@
 CREATE TABLE IF NOT EXISTS games (
   chat_id INTEGER PRIMARY KEY,
   status TEXT NOT NULL DEFAULT 'lobby',
-  turn_user INTEGER NOT NULL DEFAULT 0
+  turn_user INTEGER NOT NULL DEFAULT 0,
+  session_id TEXT,
+  selection_token_hash TEXT
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_games_session_id
+ON games(session_id) WHERE session_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS character_selection_requests (
+  request_id TEXT PRIMARY KEY,
+  chat_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  private_chat_id INTEGER NOT NULL,
+  user_name TEXT NOT NULL DEFAULT 'بازیکن',
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'completed', 'cancelled', 'expired')),
+  search_query TEXT NOT NULL DEFAULT '',
+  selected_char_key TEXT,
+  prompt_message_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_selection_requests_owner
+ON character_selection_requests(private_chat_id, user_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_selection_requests_session
+ON character_selection_requests(chat_id, session_id, status);
 
 CREATE TABLE IF NOT EXISTS players (
   chat_id INTEGER NOT NULL,
