@@ -84,7 +84,7 @@ test('defense Effect rejects invalid calculation results', () => {
 
 test('unsupported Effect types and resolvers are explicit', () => {
   const unknownType = planEffects({
-    ability: technique({ effects: [{ type: 'heal', amount: 5 }] }),
+    ability: technique({ effects: [{ type: 'buff' }] }),
     context: damageContext(), targets: [{ id: 2 }],
   });
   const unknownResolver = planEffects({
@@ -262,4 +262,178 @@ test('planner does not mutate inputs, use randomness, or depend on resource affo
   } finally {
     Math.random = previousRandom;
   }
+});
+
+
+test('fixed heal Effect creates a deterministic intent for every resolved target', () => {
+  const ability = technique({ effects: [{ type: 'heal', resolver: 'fixed', amount: 35 }] });
+  const targets = [{ id: 2 }, { id: 3 }];
+  const result = planEffects({ ability, context: baseContext, targets });
+  assert.deepEqual(result, {
+    ok: true,
+    effects: [{ type: 'heal', resolver: 'fixed', amount: 35, targetIds: [2, 3] }],
+    errors: [],
+  });
+});
+
+test('heal Effect rejects missing, malformed, zero, negative and non-finite amounts', () => {
+  const targets = [{ id: 2 }];
+  for (const definition of [
+    { type: 'heal', resolver: 'fixed' },
+    { type: 'heal', resolver: 'fixed', amount: '20' },
+    { type: 'heal', resolver: 'fixed', amount: 0 },
+    { type: 'heal', resolver: 'fixed', amount: -1 },
+    { type: 'heal', resolver: 'fixed', amount: Number.NaN },
+    { type: 'heal', resolver: 'fixed', amount: Number.POSITIVE_INFINITY },
+  ]) {
+    const result = planEffects({
+      ability: technique({ effects: [definition] }), context: baseContext, targets,
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.errors[0].code, 'invalid_heal_amount');
+    assert.deepEqual(result.effects, []);
+  }
+});
+
+test('heal Effect rejects unsupported resolvers and empty or malformed resolved targets', () => {
+  const unsupported = planEffects({
+    ability: technique({ effects: [{ type: 'heal', resolver: 'reversalResult' }] }),
+    context: baseContext, targets: [{ id: 2 }],
+  });
+  const empty = planEffects({
+    ability: technique({ effects: [{ type: 'heal', resolver: 'fixed', amount: 20 }] }),
+    context: baseContext, targets: [],
+  });
+  const malformed = planEffects({
+    ability: technique({ effects: [{ type: 'heal', resolver: 'fixed', amount: 20 }] }),
+    context: baseContext, targets: [{ id: 0 }],
+  });
+  assert.equal(unsupported.errors[0].code, 'unsupported_effect_resolver');
+  assert.equal(empty.errors[0].code, 'heal_requires_targets');
+  assert.equal(malformed.errors[0].code, 'invalid_resolved_targets');
+});
+
+test('per-target Fixed NP Cost multiplies its unit amount by one, two, or three resolved targets', () => {
+  for (const [targetCount, expected] of [[1, 25], [2, 50], [3, 75]]) {
+    const targets = Array.from({ length: targetCount }, (_, index) => ({ id: index + 2 }));
+    const result = calculateAbilityCost({
+      ability: technique({ cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true } }),
+      effects: [], targets,
+    });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.costs, [{
+      mode: 'fixed', resource: 'np', perTarget: true,
+      unitAmount: 25, targetCount, amount: expected,
+    }]);
+  }
+});
+
+test('per-target Fixed NP Cost produces zero for an empty resolved target set', () => {
+  const result = calculateAbilityCost({
+    ability: technique({ cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true } }),
+    effects: [], targets: [],
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.costs[0].targetCount, 0);
+  assert.equal(result.costs[0].amount, 0);
+});
+
+test('per-target Fixed NP Cost rejects invalid amounts, flags and malformed target sets', () => {
+  for (const amount of [-1, '25', Number.NaN, Number.POSITIVE_INFINITY]) {
+    const result = calculateAbilityCost({
+      ability: technique({ cost: { mode: 'fixed', resource: 'np', amount, perTarget: true } }),
+      effects: [], targets: [{ id: 2 }],
+    });
+    assert.equal(result.errors[0].code, 'invalid_fixed_cost_amount');
+  }
+  const invalidFlag = calculateAbilityCost({
+    ability: technique({ cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: 'yes' } }),
+    effects: [], targets: [{ id: 2 }],
+  });
+  const invalidTargets = calculateAbilityCost({
+    ability: technique({ cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true } }),
+    effects: [], targets: [{ id: 2 }, { id: 2 }],
+  });
+  assert.equal(invalidFlag.errors[0].code, 'invalid_per_target_flag');
+  assert.equal(invalidTargets.errors[0].code, 'invalid_resolved_targets');
+});
+
+test('per-target Fixed Cost retains NP-only restrictions', () => {
+  const hp = calculateAbilityCost({
+    ability: technique({ cost: { mode: 'fixed', resource: 'hp', amount: 25, perTarget: true } }),
+    effects: [], targets: [{ id: 2 }],
+  });
+  const unknown = calculateAbilityCost({
+    ability: technique({ cost: { mode: 'fixed', resource: 'mana', amount: 25, perTarget: true } }),
+    effects: [], targets: [{ id: 2 }],
+  });
+  assert.equal(hp.errors[0].code, 'fixed_cost_resource_forbidden');
+  assert.equal(unknown.errors[0].code, 'unsupported_fixed_cost_resource');
+});
+
+test('unified planner creates a healing plan and charges NP per resolved teammate', () => {
+  const ability = technique({
+    category: 'support',
+    targeting: { mode: 'all_allies', selection: 'automatic' },
+    effects: [{ type: 'heal', resolver: 'fixed', amount: 35 }],
+    cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true },
+  });
+  const context = {
+    game: { status: 'active' },
+    players: [
+      players[0],
+      { ...players[1], team: 'red' },
+      { user_id: 3, name: 'Ally Two', char_key: 'maki', team: 'red', alive: 1,
+        hp: 90, max_hp: 180, np: 30, max_np: 120 },
+      { user_id: 4, name: 'Enemy', char_key: 'maki', team: 'blue', alive: 1,
+        hp: 100, max_hp: 180, np: 30, max_np: 120 },
+    ],
+  };
+  const result = planAbility({ ability, actor, context });
+  assert.equal(result.status, 'planned');
+  assert.deepEqual(result.targets.map((target) => target.id), [2, 3]);
+  assert.deepEqual(result.effects, [{
+    type: 'heal', resolver: 'fixed', amount: 35, targetIds: [2, 3],
+  }]);
+  assert.equal(result.costs[0].amount, 50);
+  assert.equal(result.costs[0].targetCount, 2);
+});
+
+test('unified planner rejects healing when Target Resolver cannot resolve any target', () => {
+  const ability = technique({
+    category: 'support',
+    targeting: { mode: 'all_allies', selection: 'automatic' },
+    effects: [{ type: 'heal', resolver: 'fixed', amount: 35 }],
+    cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true },
+  });
+  const result = planAbility({
+    ability, actor, context: { ...baseContext, players: [players[0]] },
+  });
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.errors[0].stage, 'targets');
+  assert.deepEqual(result.effects, []);
+  assert.deepEqual(result.costs, []);
+});
+
+test('healing planning is deterministic and does not mutate Ability, Actor, or Context', () => {
+  const ability = deepFreeze(technique({
+    category: 'support',
+    targeting: { mode: 'all_allies', selection: 'automatic' },
+    effects: [{ type: 'heal', resolver: 'fixed', amount: 35 }],
+    cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true },
+  }));
+  const context = deepFreeze({
+    game: { status: 'active' },
+    players: [
+      players[0],
+      { ...players[1], team: 'red' },
+    ],
+  });
+  const frozenActor = deepFreeze({ ...actor });
+  const first = planAbility({ ability, actor: frozenActor, context });
+  const second = planAbility({ ability, actor: frozenActor, context });
+  assert.deepEqual(first, second);
+  assert.equal(first.status, 'planned');
+  assert.equal(context.players[1].hp, 120);
+  assert.equal(context.players[0].np, 80);
 });

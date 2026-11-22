@@ -94,7 +94,7 @@ handler({
 - [x] تست‌های واحد قرارداد و سازگاری
 - [ ] اجرای Ability از مسیر Combat
 - [x] Target Resolver مستقل و فقط‌خواندنی (Phase 2)
-- [x] Effect Planning و Resource Cost Calculation فقط‌خواندنی (Phase 3؛ بدون اجرای Effect یا مصرف منبع)
+- [x] Effect Planning و Resource Cost Calculation فقط‌خواندنی (Phase 3–4؛ شامل Healing ثابت و Fixed NP per-target، بدون اجرای Effect یا مصرف منبع)
 - [ ] Handler dispatcher و mutation کنترل‌شده Engine
 - [ ] Status، Summon و Round Scheduler
 
@@ -104,6 +104,28 @@ handler({
 Target Resolver از همین فیلدهای `targeting.mode` و `targeting.selection` استفاده می‌کند و قرارداد موازی تعریف نمی‌کند. این مرحله فقط تعیین و اعتبارسنجی هدف‌ها را اضافه کرده است؛ مسیر Combat همچنان از آن استفاده نمی‌کند. جزئیات modeهای پشتیبانی‌شده، وضعیت‌های خروجی و نبود Summon Runtime در [docs/TARGET-RESOLVER.md](TARGET-RESOLVER.md) آمده است.
 
 
-## Ability Planning — Phase 3
+## Ability Planning — Phase 3 (historical milestone)
 
 ماژول `src/game/planning/` از قرارداد Ability و Target Resolver موجود استفاده می‌کند و خروجی Execution Plan قطعی می‌سازد. این مرحله فقط Effectهای `damage/defense` و Costهای `none/fixed NP/legacy techNpCost` را برنامه‌ریزی می‌کند. برای Fixed Cost فقط NP معتبر است؛ HP و منابع دیگر رد می‌شوند. قرارداد مشترک و Adapterها تغییر نکرده‌اند. خروجی صرفاً intent و مقدار هزینه است؛ هیچ Effect اجرا، منبع مصرف، affordability check یا اتصال Combat انجام نمی‌شود. جزئیات در [ABILITY-PLANNING.md](ABILITY-PLANNING.md) ثبت شده است.
+
+
+## Healing و هزینه متناسب با تعداد هدف — Phase 4
+
+Phase 4 بدون تغییر ساختار پایهٔ Ability، دو descriptor قابل‌برنامه‌ریزی را به لایه Planning اضافه می‌کند:
+
+```js
+{
+  targeting: { mode: 'all_allies', selection: 'automatic' },
+  cost: { mode: 'fixed', resource: 'np', amount: 25, perTarget: true },
+  effects: [{ type: 'heal', resolver: 'fixed', amount: 35 }],
+}
+```
+
+- `heal` در Planner فقط با `resolver: 'fixed'` و `amount` عددی، finite و مثبت پذیرفته می‌شود. این مقدار، healing intent اعلام‌شده توسط داده Ability است؛ فرمول عمومی یا محاسبهٔ جدیدی برای Healing تعریف نشده است.
+- `perTarget: true` فقط به `fixed NP` تعلق دارد. `amount` در این حالت هزینهٔ هر هدف است و تعداد هدف‌ها از خروجی نهایی Target Resolver گرفته می‌شود؛ مقدار کل در Execution Plan ثبت می‌شود.
+- `resource: 'hp'` همچنان برای Fixed Cost ممنوع است و منابع دیگر نیز رد می‌شوند.
+- این semantics در Planner اعتبارسنجی می‌شوند؛ اعتبارسنجی ساختاری عمومی Ability همچنان descriptorها را به‌صورت extensible بررسی می‌کند. Adapterها و Catalogهای فعلی تغییر نکرده‌اند.
+
+Target Resolver فعلی Actor را از `all_allies` حذف می‌کند. بنابراین «Actor به‌علاوه همه هم‌تیمی‌های زنده» هنوز با یک targeting mode قابل بیان نیست؛ `self` و `all_allies` را Planner ترکیب نمی‌کند. این قابلیت تا تصمیم مستقل و سازگار درباره Target Resolver خارج از دامنه باقی می‌ماند.
+
+این Phase همچنان فقط Planning است: Healing اعمال نمی‌شود، HP/NP تغییر نمی‌کند و هیچ اتصال Combat، Engine، D1 یا Telegram اضافه نشده است. جزئیات قرارداد، خطاها و محدودیت‌ها در [ABILITY-PLANNING.md](ABILITY-PLANNING.md) آمده است.
