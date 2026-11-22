@@ -84,7 +84,7 @@ test('defense Effect rejects invalid calculation results', () => {
 
 test('unsupported Effect types and resolvers are explicit', () => {
   const unknownType = planEffects({
-    ability: technique({ effects: [{ type: 'heal', amount: 5 }] }),
+    ability: technique({ effects: [{ type: 'buff' }] }),
     context: damageContext(), targets: [{ id: 2 }],
   });
   const unknownResolver = planEffects({
