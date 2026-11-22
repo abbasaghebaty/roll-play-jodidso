@@ -64,7 +64,7 @@ export function planAbility({ ability, actor, context, selectedTargetIds } = {})
       item.code === 'unsupported_effect' || item.code === 'unsupported_effect_resolver') ? 'unsupported' : 'rejected';
     return failedPlan(status, ability, effectResult.errors);
   }
-  const costResult = calculateAbilityCost({ ability, effects: effectResult.effects });
+  const costResult = calculateAbilityCost({ ability, effects: effectResult.effects, targets: targetResult.targets });
   if (!costResult.ok) {
     const status = costResult.errors.some((item) => item.code.startsWith('unsupported_')) ? 'unsupported' : 'rejected';
     return failedPlan(status, ability, costResult.errors);
