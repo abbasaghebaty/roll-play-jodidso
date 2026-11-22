@@ -331,4 +331,4 @@ Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به 
 
 ## Ability Planning (Phase 3)
 
-ماژول‌های \`src/game/planning/\` یک Execution Plan فقط‌خواندنی از Ability، Actor، Context و هدف‌های Resolveشده می‌سازند. این لایه Effectهای \`damage/defense\` و Costهای \`none/fixed NP/legacy\` را برنامه‌ریزی می‌کند؛ هیچ Effect یا منبعی را اجرا/مصرف نمی‌کند و به Combat متصل نیست. جزئیات قرارداد ورودی/خروجی و خطاها در [docs/ABILITY-PLANNING.md](docs/ABILITY-PLANNING.md) آمده است.
+ماژول‌های `src/game/planning/` یک Execution Plan فقط‌خواندنی از Ability، Actor، Context و هدف‌های Resolveشده می‌سازند. این لایه Effectهای `damage/defense` و Costهای `none/fixed NP/legacy` را برنامه‌ریزی می‌کند؛ هیچ Effect یا منبعی را اجرا/مصرف نمی‌کند و به Combat متصل نیست. جزئیات قرارداد ورودی/خروجی و خطاها در [docs/ABILITY-PLANNING.md](docs/ABILITY-PLANNING.md) آمده است.
