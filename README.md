@@ -15,6 +15,7 @@
 │   ├── 0002_combat_turn_claim.sql
 │   └── 0003_private_character_selection.sql
 ├── docs/
+│   ├── ABILITY-CONTRACT.md          # قرارداد مشترک Ability و سازگاری قدیمی
 │   ├── character-selection.md
 │   └── jujutsu/
 │       ├── README.md
@@ -22,6 +23,7 @@
 │       ├── IMPLEMENTATION-STATUS.md
 │       └── 01..11-topic-files.md
 ├── tests/
+│   ├── abilities.test.mjs           # قرارداد، Registry و Adapterهای Ability
 │   ├── rules.test.mjs
 │   ├── atomic-combat.test.mjs
 │   ├── catalog-search.test.mjs
@@ -44,6 +46,8 @@
     ├── report.js
     ├── testmode.js
     ├── data/
+    │   ├── abilities/                # shared Ability contract and Handler result validation
+    │   ├── adapters/                 # read-only projections from legacy catalogs to Ability
     │   ├── characters.js             # runtime compatibility adapter
     │   ├── techniques.js             # runtime compatibility adapter
     │   ├── defenses.js               # runtime compatibility adapter
@@ -100,8 +104,12 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 | فایل | مسئولیت |
 |---|---|
 | `src/data/catalog/characters/` | منبع canonical شخصیت‌ها بر اساس فرنچایز؛ شناسه و کد پایدار، نام‌ها، سقف منابع و تکنیک‌های مجاز |
-| `src/data/registry/` | دسترسی مرکزی به شخصیت/تکنیک با ID و Code و جست‌وجوی دقیق/تقریبی صفحه‌بندی‌شده |
-| `src/data/validation/` | اعتبارسنجی شناسه‌ها، کدها، مقادیر و ارجاع تکنیک‌ها؛ داده انگلیسی ناقص به‌صورت warning گزارش می‌شود |
+| `src/data/registry/` | دسترسی مرکزی به شخصیت/تکنیک و Ability با ID و Code و جست‌وجوی دقیق/تقریبی صفحه‌بندی‌شده |
+| `src/data/validation/` | اعتبارسنجی شناسه‌ها، کدها، مقادیر، ارجاع تکنیک‌ها و قرارداد Ability؛ داده انگلیسی ناقص به‌صورت warning گزارش می‌شود |
+| `src/data/abilities/contract.js` | قرارداد داده‌ای مشترک Ability و اعتبارسنجی نتیجه declarative Handler |
+| `src/data/validation/abilities.js` | اعتبارسنجی ساختار Ability و ارجاع مالکیت به شناسه شخصیت‌های واقعی |
+| `src/data/adapters/abilities.js` | تبدیل read-only تکنیک‌ها و دفاع‌های قدیمی به Ability بدون تغییر Catalog اصلی |
+| `src/data/registry/abilities.js` | Registry یکپارچه‌ی خواندنی Abilityها؛ مالکیت تکنیک از `character.techniqueIds` مشتق می‌شود |
 | `src/data/characters.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat؛ منبع canonical در `data/catalog/` است |
 | `src/data/catalog/techniques/` | داده canonical تکنیک‌ها؛ مقادیر Rank/Base/نوع/هزینه رایگان مطابق داده قبلی |
 | `src/data/techniques.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat |
@@ -302,3 +310,8 @@ Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به 
 - داده‌های فعلی Repository برای ماکی و یوجی نام انگلیسی ندارند؛ این فیلدها null باقی مانده و Validator آن‌ها را به‌صورت warning گزارش می‌کند تا نامی حدس زده نشود.
 
 جزئیات چرخه درخواست، امنیت لینک و وضعیت Migration در docs/character-selection.md آمده است.
+
+
+## قرارداد مشترک Ability
+
+قرارداد داده‌ای مشترک و Adapterهای سازگاری در [docs/ABILITY-CONTRACT.md](docs/ABILITY-CONTRACT.md) مستند شده‌اند. این لایه فعلاً فقط projection، Registry و Validation است؛ مسیر فعلی Combat همچنان از `TECHNIQUES` و `DEFENSES` قدیمی استفاده می‌کند و هیچ Effect/Target/Handler جدیدی را اجرا نمی‌کند.
