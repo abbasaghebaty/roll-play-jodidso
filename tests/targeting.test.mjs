@@ -217,7 +217,7 @@ test('invalid game state, duplicate player IDs, and malformed target definitions
   });
   assert.equal(inactiveGame.status, 'invalid_context');
   assert.equal(inactiveGame.reason, 'game_not_active');
-  assert.equal(duplicatePlayers.reason, 'invalid_context');
+  assert.equal(duplicatePlayers.reason, 'duplicate_player_id');
   assert.equal(badDefinition.status, 'invalid_ability');
   assert.equal(badDefinition.reason, 'selection_mode_mismatch');
 });
