@@ -46,6 +46,8 @@
     ├── report.js
     ├── testmode.js
     ├── data/
+    │   ├── abilities/                # shared Ability contract and Handler result validation
+    │   ├── adapters/                 # read-only projections from legacy catalogs to Ability
     │   ├── characters.js             # runtime compatibility adapter
     │   ├── techniques.js             # runtime compatibility adapter
     │   ├── defenses.js               # runtime compatibility adapter
@@ -105,6 +107,7 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 | `src/data/registry/` | دسترسی مرکزی به شخصیت/تکنیک و Ability با ID و Code و جست‌وجوی دقیق/تقریبی صفحه‌بندی‌شده |
 | `src/data/validation/` | اعتبارسنجی شناسه‌ها، کدها، مقادیر، ارجاع تکنیک‌ها و قرارداد Ability؛ داده انگلیسی ناقص به‌صورت warning گزارش می‌شود |
 | `src/data/abilities/contract.js` | قرارداد داده‌ای مشترک Ability و اعتبارسنجی نتیجه declarative Handler |
+| `src/data/validation/abilities.js` | اعتبارسنجی ساختار Ability و ارجاع مالکیت به شناسه شخصیت‌های واقعی |
 | `src/data/adapters/abilities.js` | تبدیل read-only تکنیک‌ها و دفاع‌های قدیمی به Ability بدون تغییر Catalog اصلی |
 | `src/data/registry/abilities.js` | Registry یکپارچه‌ی خواندنی Abilityها؛ مالکیت تکنیک از `character.techniqueIds` مشتق می‌شود |
 | `src/data/characters.js` | لایه سازگاری runtime برای مصرف‌کننده‌های قدیمی Combat؛ منبع canonical در `data/catalog/` است |
