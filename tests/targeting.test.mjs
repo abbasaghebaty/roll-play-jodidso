@@ -191,10 +191,16 @@ test('actor must exist, be alive, and be authorized by the Ability owner allowli
     actor: { ...actor, char_key: 'maki' },
     context: { players: [{ ...actor, char_key: 'maki' }] },
   });
+  const malformedOwners = resolveTargets({
+    ability: ability('self', 'automatic', { owners: { mode: 'allowlist', characterIds: 'yuji' } }),
+    actor, context,
+  });
   assert.equal(absent.status, 'invalid_actor');
   assert.equal(absent.reason, 'actor_not_in_game');
   assert.equal(dead.reason, 'actor_not_alive');
   assert.equal(notAllowed.reason, 'actor_not_allowed');
+  assert.equal(malformedOwners.status, 'invalid_ability');
+  assert.equal(malformedOwners.reason, 'invalid_owners_allowlist');
 });
 
 test('invalid game state, duplicate player IDs, and malformed target definitions are rejected', () => {

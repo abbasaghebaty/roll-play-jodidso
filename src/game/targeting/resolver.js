@@ -49,11 +49,19 @@ export function getTargetDefinition(ability) {
 
 function validateActorOwnership(ability, actor) {
   const owners = ability?.owners;
-  if (!isRecord(owners) || !['any', 'allowlist'].includes(owners.mode)) return false;
-  if (owners.mode === 'any') return true;
-  if (!Array.isArray(owners.characterIds)) return false;
+  if (!isRecord(owners) || !['any', 'allowlist'].includes(owners.mode)) {
+    return { ok: false, status: 'invalid_ability', reason: 'invalid_owners_definition' };
+  }
+  if (owners.mode === 'any') return { ok: true };
+  if (!Array.isArray(owners.characterIds) ||
+      owners.characterIds.some((id) => typeof id !== 'string' || !id.trim())) {
+    return { ok: false, status: 'invalid_ability', reason: 'invalid_owners_allowlist' };
+  }
   const character = getCharacterByKey(actor?.char_key);
-  return Boolean(character && owners.characterIds.includes(character.id));
+  if (!character || !owners.characterIds.includes(character.id)) {
+    return { ok: false, status: 'invalid_actor', reason: 'actor_not_allowed' };
+  }
+  return { ok: true };
 }
 
 function readPlayerContext(actorInput, context) {
@@ -205,9 +213,8 @@ export function resolveTargets({
 
   const state = readPlayerContext(actorInput, context);
   if (!state.ok) return outcome(state.status, state.reason);
-  if (!validateActorOwnership(ability, state.actor)) {
-    return outcome('invalid_actor', 'actor_not_allowed');
-  }
+  const ownership = validateActorOwnership(ability, state.actor);
+  if (!ownership.ok) return outcome(ownership.status, ownership.reason);
 
   const candidates = resolvePlayerCandidates({
     mode: definition.mode,
