@@ -14,3 +14,12 @@ export {
   getTechniquesByCharacter,
 } from './techniques.js';
 export { searchCharacters, searchCharacterRecords, normalizeSearchText, damerauLevenshtein } from './search.js';
+
+export {
+  ABILITY_CATALOG,
+  listAbilities,
+  getAbilityById,
+  getAbilityByCode,
+  getAbilityByKey,
+  getAbilitiesByCharacter,
+} from './abilities.js';

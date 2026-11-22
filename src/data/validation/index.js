@@ -3,12 +3,13 @@ import { TECHNIQUE_CATALOG } from '../catalog/techniques/index.js';
 import { DEFENSE_CATALOG } from '../catalog/defenses/index.js';
 import { validateCharacters } from './characters.js';
 import { validateTechniques } from './techniques.js';
+import { validateAbilityCatalog } from './abilities.js';
 
 export function inspectCatalog() {
   const characterTechniqueIds = new Set(TECHNIQUE_CATALOG.map((item) => item.id));
   const characterResult = validateCharacters(CHARACTER_CATALOG, characterTechniqueIds);
   const techniqueResult = validateTechniques(TECHNIQUE_CATALOG);
-  const errors = [...techniqueResult.errors, ...characterResult.errors];
+  const errors = [...techniqueResult.errors, ...characterResult.errors, ...validateAbilityCatalog()];
   const warnings = [...techniqueResult.warnings, ...characterResult.warnings];
 
   const defenseIds = new Set();
