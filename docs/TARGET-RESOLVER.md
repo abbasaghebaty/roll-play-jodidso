@@ -26,7 +26,7 @@ Resolver مستقیماً از `ability.targeting.mode` و `ability.targeting.se
 - دشمن: هر بازیکن زنده غیر از Actor که تیمش با تیم Actor برابر نباشد؛ اگر Actor تیم خالی داشته باشد، تمام بازیکنان زنده دیگر دشمن محسوب می‌شوند.
 - هم‌تیمی: بازیکن زنده دیگری با همان تیم غیرخالی Actor.
 - Actor در `single_ally` و `all_allies` وارد نمی‌شود؛ هدف `self` حالت مستقلی است.
-- فقط `alive=1` یا `alive=true` Candidate معتبر است. داده بازیکن حذف‌شده از نتیجه حذف می‌شود. Actor نیز باید زنده و عضو snapshot همان بازی باشد.
+- فقط مقدار عددی `alive=1` Candidate معتبر است؛ `alive=0` بازیکن حذف‌شده را از Candidateها کنار می‌گذارد. مقدار بولی، رشته‌ای، خارج از بازه یا فیلد مفقود، Snapshot نامعتبر است و کل درخواست با `invalid_context / invalid_player_snapshot` رد می‌شود. Actor نیز باید زنده و عضو snapshot همان بازی باشد.
 
 این تعاریف از شرط‌های واقعی `commands/combat.js` استخراج شده‌اند، نه از حدس درباره قوانین آینده.
 
@@ -39,14 +39,14 @@ const result = resolveTargets({
   ability,                   // Ability record from Phase 1 Registry
   actor,                     // Player snapshot; user_id is required
   context: {
-    game: { status: 'active' }, // optional; if supplied, must be active
+    game: { status: 'active' }, // optional; if property is supplied, must be an object with status='active'
     players: playerSnapshots,   // required, same chat/game only
   },
   selectedTargetIds: [123],  // optional; IDs for manual selection
 });
 ```
 
-هر snapshot بازیکن باید حداقل `user_id`، `team` و `alive` داشته باشد. برای کنترل مالکیت Ability، `char_key` نیز در Actor لازم است. Actor دوباره از `context.players` بر اساس `user_id` خوانده می‌شود؛ مقادیر team/alive ارسالی جداگانه نمی‌توانند snapshot معتبر را override کنند.
+هر snapshot بازیکن باید با نوع‌های واقعی ستون‌های D1 منطبق باشد: `user_id` عدد صحیح مثبت، `team` رشته (مقدار خالی `''` برای بازیکن بدون تیم معتبر است) و `alive` عدد صحیح `0` یا `1`. نبود هرکدام یا نوع نامعتبر، خروجی `invalid_context / invalid_player_snapshot` می‌دهد؛ فیلد مفقود `alive` به معنی حذف‌شدن و فیلد مفقود `team` به معنی بدون‌تیم بودن تفسیر نمی‌شود. برای کنترل مالکیت Ability با `owners.mode='allowlist'`، `char_key` نیز باید در Snapshot مرجع Actor موجود و قابل نگاشت به Catalog باشد. ورودی `actor` فقط شناسهٔ `user_id` را برای یافتن Actor مشخص می‌کند؛ تمام فیلدهای واقعی Actor از `context.players` خوانده می‌شوند و فیلدهای جعلی در ورودی جداگانه نادیده گرفته می‌شوند.
 
 Candidate خروجی حداقلی و بدون HP/NP یا فیلدهای داخلی است: `{ type: 'player', id, name }`.
 
@@ -75,7 +75,8 @@ Candidate خروجی حداقلی و بدون HP/NP یا فیلدهای داخل
 ## محدودیت‌ها و مرزهای معماری
 
 - هیچ Query یا تغییر D1 در Resolver وجود ندارد؛ caller باید snapshotهای متعلق به همان بازی را تهیه کند.
-- Resolver وضعیت نوبت Actor را enforce نمی‌کند؛ کنترل نوبت همچنان مسئولیت جریان Combat/Engine است. اگر `context.game.status` داده شود، فقط فعال‌بودن بازی بررسی می‌شود.
+- `context.game` اختیاری است. اگر property آن ارسال شود، باید یک object با `status` رشته‌ای دقیقاً برابر `'active'` باشد؛ `game: {}`، `null` یا status مفقود/نامعتبر با `invalid_context` رد می‌شود. حذف کامل property همچنان مجاز است.
+- Resolver وضعیت نوبت Actor را enforce نمی‌کند؛ کنترل نوبت همچنان مسئولیت جریان Combat/Engine است.
 - Ability غیرفعال یا دارای تعریف targeting/owners ناقص رد می‌شود. Abilityهای allowlist فقط وقتی پذیرفته می‌شوند که `actor.char_key` به شخصیت واقعی Catalog نگاشت شود و شناسه آن در `owners.characterIds` باشد.
 - اگر انتخاب خودکار برای یک هدف تکی بیش از یک Candidate داشته باشد، Resolver `unsupported / automatic_selection_ambiguous` می‌دهد؛ هیچ انتخاب تصادفی یا مبتنی بر ترتیب صندلی انجام نمی‌شود.
 - Summon Runtime، جدول/Entity، مالکیت Summon و snapshot آن وجود ندارد؛ هیچ Candidate یا داده جعلی Summon ساخته نمی‌شود.
@@ -84,4 +85,8 @@ Candidate خروجی حداقلی و بدون HP/NP یا فیلدهای داخل
 
 ## تست
 
-`tests/targeting.test.mjs` سناریوهای self، enemy/ally، چندهدفه خودکار، تیم خالی، حذف‌شده، انتخاب دستی/خودکار، تکرار، تعداد اشتباه، Actor غیرمجاز، Context نامعتبر و حالت‌های پشتیبانی‌نشده را پوشش می‌دهد. Summonها فقط به‌عنوان unsupported تست می‌شوند؛ هیچ Runtime جعلی ساخته نشده است.
+`tests/targeting.test.mjs` سناریوهای self، enemy/ally، چندهدفه خودکار، تیم خالی، حذف‌شده، انتخاب دستی/خودکار، تکرار، تعداد اشتباه، Actor غیرمجاز، Context نامعتبر و حالت‌های پشتیبانی‌نشده را پوشش می‌دهد. ممیزی اعتبارسنجی همچنین Snapshot ناقص/با نوع نامعتبر، Game Context ناقص یا نامعتبر، اختیاری‌بودن Game Context، Actor غایب از Snapshot مرجع و تلاش برای جعل فیلدهای Actor را تست می‌کند. Summonها فقط به‌عنوان unsupported تست می‌شوند؛ هیچ Runtime جعلی ساخته نشده است.
+
+### مبنای نوع داده‌ها
+
+نوع‌ها از `schema.sql` و `migrations/0000_initial_schema.sql` گرفته شده‌اند: `players.user_id INTEGER NOT NULL`، `players.team TEXT NOT NULL DEFAULT ''` و `players.alive INTEGER NOT NULL DEFAULT 1`. بنابراین Resolver فقط شناسهٔ عددی صحیح مثبت، تیم رشته‌ای (از جمله رشتهٔ خالی) و alive عددی `0/1` را به‌عنوان Snapshot معتبر می‌پذیرد. این سخت‌گیری فقط ورودی Resolver را اعتبارسنجی می‌کند و Schema یا داده‌های ذخیره‌شده را تغییر نمی‌دهد.
