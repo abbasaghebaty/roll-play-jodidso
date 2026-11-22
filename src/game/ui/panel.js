@@ -4,6 +4,7 @@ import { CHARACTERS } from '../../data/characters.js';
 import { getGame } from '../engine.js';
 import { mention, esc, sendKeyboard, editMessage, pinMessage } from '../../telegram.js';
 import { sendTurnPrompt } from './prompts.js';
+import { buildSelectionUrl } from '../selection/requests.js';
 
 const label = (p) => `${mention(p)} — ${esc(CHARACTERS[p.char_key]?.name || p.char_key)} ❤️${p.hp} 🔮${p.np}`;
 
@@ -18,7 +19,7 @@ export async function renderBattlePanel(env, chat, messageId = null) {
 
   text += players.map(p => `${p.user_id === game.turn_user && game.status === 'active' ? '🎯 ' : ''}${p.alive ? '🟢' : '💀'} ${label(p)}`).join('\n') || 'هنوز بازیکنی ثبت‌نام نکرده.';
 
-  if (game.status === 'lobby') text += '\n\nبرای ورود، شخصیتت را از دکمه‌ها انتخاب کن.';
+  if (game.status === 'lobby') text += '\n\nبرای ثبت‌نام یا تغییر کاراکتر، دکمه انتخاب را بزن و در پیوی ربات جست‌وجو کن.';
   if (game.status === 'active' && current) text += `\n\n🎯 نوبت: ${mention(current)}`;
 
   if (pending.length) text += '\n\n🛡 حمله‌های منتظر دفاع:\n' + pending.map(p => {
@@ -32,13 +33,14 @@ export async function renderBattlePanel(env, chat, messageId = null) {
   const rows = [];
 
   if (game.status === 'lobby') {
-    const available = Object.entries(CHARACTERS).filter(([, c]) => !c.hidden);
-
-    for (let i = 0; i < available.length; i += 2) {
-      rows.push(available.slice(i, i + 2).map(([key, c]) => ({
-        text: `👤 ${c.name}`,
-        callback_data: `rp:j:${key}`,
-      })));
+    try {
+      rows.push([{
+        text: '👤 انتخاب کاراکتر',
+        url: buildSelectionUrl(env, game),
+      }]);
+    } catch (error) {
+      // Never publish an incomplete deep link; keep the lobby visible for diagnosis.
+      console.error('Private character selection link unavailable:', error);
     }
 
     if (players.length >= 2) {
@@ -46,7 +48,7 @@ export async function renderBattlePanel(env, chat, messageId = null) {
     }
   }
 
-  const markup = { inline_keyboard: rows.slice(0, 90) };
+  const markup = { inline_keyboard: rows };
 
   if (messageId) {
     await editMessage(env, chat, messageId, text, markup);

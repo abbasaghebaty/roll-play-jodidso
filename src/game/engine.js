@@ -1,7 +1,41 @@
 import { all, first, run, batch } from '../db.js';
+import { getCharacterByKey, listCharacters } from '../data/registry/index.js';
 export async function getGame(env, chat) {
   return await first(env.DB, 'SELECT * FROM games WHERE chat_id=?', chat);
 }
+// Reconcile only resource ceilings from the current deployed Catalog.
+// Existing HP/NP are capped, never refilled; all unrelated player state is untouched.
+export async function syncPlayerCatalogCaps(env, chat) {
+  const rows = await all(env.DB, 'SELECT DISTINCT char_key FROM players WHERE chat_id=?', chat);
+  const keys = new Set(rows.map((row) => row.char_key));
+  const catalog = listCharacters({ includeInactive: true, includeHidden: true })
+    .filter((character) => keys.has(character.key));
+  if (!catalog.length) return 0;
+
+  const statements = [];
+  for (let offset = 0; offset < catalog.length; offset += 100) {
+    const chunk = catalog.slice(offset, offset + 100);
+    const hpCase = chunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const npCase = chunk.map(() => 'WHEN ? THEN ?').join(' ');
+    const pairs = (field) => chunk.flatMap((character) => [
+      character.key, character.stats[field],
+    ]);
+    const marks = chunk.map(() => '?').join(',');
+    statements.push({
+      sql: `UPDATE players SET
+        max_hp=CASE char_key ${hpCase} ELSE max_hp END,
+        hp=MIN(hp,CASE char_key ${hpCase} ELSE hp END),
+        max_np=CASE char_key ${npCase} ELSE max_np END,
+        np=MIN(np,CASE char_key ${npCase} ELSE np END)
+        WHERE chat_id=? AND char_key IN (${marks})`,
+      args: [...pairs('hp'), ...pairs('hp'), ...pairs('np'), ...pairs('np'), chat,
+        ...chunk.map((character) => character.key)],
+    });
+  }
+  const results = await batch(env.DB, statements);
+  return results.reduce((sum, item) => sum + Number(item?.meta?.changes || 0), 0);
+}
+
 export async function getPlayer(env, chat, uid) {
   return await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=?', chat, uid);
 }

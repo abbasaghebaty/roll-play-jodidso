@@ -1,5 +1,5 @@
 // Telegram callback router for the rp: inline-keyboard namespace.
-import { all, first, run } from '../../db.js';
+import { all, first, run, batch } from '../../db.js';
 import { CHARACTERS } from '../../data/characters.js';
 import { TECHNIQUES } from '../../data/techniques.js';
 import { getGame, alivePlayers } from '../engine.js';
@@ -42,13 +42,7 @@ export async function handleBattleCallback(query, env, handlers) {
   };
 
   if (action === 'j') {
-    if (game.status !== 'lobby') {
-      return answerCallback(env, query.id, 'ثبت‌نام بسته شده؛ بازی شروع شده است.', true);
-    }
-
-    await handlers.join(ctx, key);
-    await refreshBattlePanel(env, chat);
-    return;
+    return answerCallback(env, query.id, 'این دکمه قدیمی است؛ از لینک انتخاب کاراکتر در پنل جدید استفاده کن.', true);
   }
 
   // شروع بازی فقط توسط مستر
@@ -67,7 +61,15 @@ export async function handleBattleCallback(query, env, handlers) {
       return answerCallback(env, query.id, 'برای شروع حداقل دو بازیکن لازم است.', true);
     }
 
-    await run(env.DB, "UPDATE games SET status='active', turn_user=? WHERE chat_id=?", players[0].user_id, chat);
+    const started = await batch(env.DB, [
+      { sql: "UPDATE games SET status='active', turn_user=? WHERE chat_id=? AND status='lobby'",
+        args: [players[0].user_id, chat] },
+      { sql: "UPDATE character_selection_requests SET status='cancelled' WHERE chat_id=? AND session_id=? AND status='pending'",
+        args: [chat, game.session_id] },
+    ]);
+    if ((started?.[0]?.meta?.changes || 0) !== 1) {
+      return answerCallback(env, query.id, 'لابی هم‌زمان بسته شد؛ پنل را تازه کن.', true);
+    }
 
     await answerCallback(env, query.id, 'بازی شروع شد!');
     await refreshBattlePanel(env, chat);

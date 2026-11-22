@@ -1,5 +1,5 @@
 // Player-facing commands: registration, character lists and status display.
-import { all, first, run } from '../db.js';
+import { all } from '../db.js';
 import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
@@ -8,33 +8,8 @@ import { refreshBattlePanel } from '../game/ui.js';
 import { say, note } from '../util.js';
 import { esc, mention } from '../telegram.js';
 
-export async function join(ctx) {
-  const { env, chat } = ctx;
-  const game = await getGame(env, chat);
-
-  if (!game || game.status !== 'lobby') return note(ctx, 'الان بازی‌ای در حالت ثبت‌نام نیست.');
-
-  const key = (ctx.args[0] || '').toLowerCase();
-  const c = own(CHARACTERS, key);
-
-  if (!c || c.hidden) return note(ctx, 'کاراکتر پیدا نشد.');
-  if (await getPlayer(env, chat, ctx.uid)) return note(ctx, 'قبلاً وارد شده‌ای.');
-
-  const taken = await first(env.DB, 'SELECT user_id FROM players WHERE chat_id=? AND char_key=?', chat, key);
-  if (taken) return note(ctx, 'این کاراکتر قبلاً انتخاب شده.');
-
-  const cnt = await first(env.DB, 'SELECT COALESCE(MAX(seat), -1) + 1 AS n FROM players WHERE chat_id=?', chat);
-  await run(
-    env.DB,
-    'INSERT INTO players (chat_id, user_id, name, char_key, hp, max_hp, np, max_np, seat) VALUES (?,?,?,?,?,?,?,?,?)',
-    chat, ctx.uid, ctx.uname, key, c.hp, c.hp, c.np, c.np, cnt.n
-  );
-
-  await note(ctx, `✅ کاراکتر ${esc(c.name)} برای تو ثبت شد. ❤️ ${c.hp}  🔮 ${c.np}`);
-  await refreshBattlePanel(env, chat);
-}
-
 export async function chars(ctx) {
+  if (!ctx.private) return;
   const lines = Object.entries(CHARACTERS)
     .filter(([, c]) => !c.hidden)
     .map(([k, c]) => `<code>${k}</code> — ${esc(c.name)} (❤️${c.hp} 🔮${c.np})`);
@@ -92,8 +67,8 @@ export async function help(ctx) {
     ctx,
     [
       '<b>بازیکن</b>',
-      '/join کلید — انتخاب کاراکتر',
-      '/chars /techs /defenses /status',
+      'انتخاب کاراکتر: از دکمه پنل گروه وارد پیوی ربات شو.',
+      '/chars /techs /defenses /status (دستورهای فهرست فقط در پیوی)',
       '/attack کلید_تکنیک — (ریپلای روی هدف)',
       '/defend کلید_دفاع — دفاع',
       '/nodefend — بدون دفاع',
