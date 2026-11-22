@@ -8,8 +8,10 @@ const SUPPORTED_PLAYER_MODES = new Set([
 const UNSUPPORTED_RUNTIME_MODES = new Set(['single_summon', 'owned_summons', 'custom']);
 
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const isAlive = (player) => player?.alive === true || player?.alive === 1;
-const teamOf = (player) => String(player?.team ?? '');
+// D1 schema: players.alive is INTEGER NOT NULL (0/1), team is TEXT NOT NULL
+// DEFAULT '', and user_id is INTEGER NOT NULL. Do not coerce malformed snapshots.
+const isAlive = (player) => player?.alive === 1;
+const teamOf = (player) => player.team;
 
 function normalizeId(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -64,23 +66,44 @@ function validateActorOwnership(ability, actor) {
   return { ok: true };
 }
 
+function isValidPlayerSnapshot(player) {
+  return isRecord(player) &&
+    Number.isSafeInteger(player.user_id) && player.user_id > 0 &&
+    typeof player.team === 'string' &&
+    (player.alive === 0 || player.alive === 1);
+}
+
 function readPlayerContext(actorInput, context) {
-  if (!isRecord(actorInput) || !Array.isArray(context?.players)) {
+  if (!isRecord(actorInput) || !isRecord(context) || !Array.isArray(context.players)) {
     return { ok: false, status: 'invalid_context', reason: 'invalid_context' };
   }
-  const actorId = normalizeId(actorInput.user_id);
-  if (actorId === null) {
+  // actorInput is an identity selector only. All actor state comes from the
+  // authoritative row in context.players; accepting string IDs here would
+  // hide a mismatch with the INTEGER user_id returned by D1.
+  const actorId = actorInput.user_id;
+  if (!Number.isSafeInteger(actorId) || actorId <= 0) {
     return { ok: false, status: 'invalid_actor', reason: 'invalid_actor' };
   }
-  if (context.game && context.game.status !== undefined && context.game.status !== 'active') {
-    return { ok: false, status: 'invalid_context', reason: 'game_not_active' };
+
+  // game is optional, but once the property is supplied it must be a real
+  // game snapshot with an explicit active status. {} / null are not omission.
+  if (Object.hasOwn(context, 'game')) {
+    if (!isRecord(context.game) || typeof context.game.status !== 'string') {
+      return { ok: false, status: 'invalid_context', reason: 'invalid_game_context' };
+    }
+    if (context.game.status !== 'active') {
+      return { ok: false, status: 'invalid_context', reason: 'game_not_active' };
+    }
   }
 
   const playersById = new Map();
   for (const player of context.players) {
-    const id = normalizeId(player?.user_id);
-    if (id === null || playersById.has(id)) {
-      return { ok: false, status: 'invalid_context', reason: 'invalid_context' };
+    if (!isValidPlayerSnapshot(player)) {
+      return { ok: false, status: 'invalid_context', reason: 'invalid_player_snapshot' };
+    }
+    const id = player.user_id;
+    if (playersById.has(id)) {
+      return { ok: false, status: 'invalid_context', reason: 'duplicate_player_id' };
     }
     playersById.set(id, player);
   }
@@ -191,9 +214,10 @@ export function validateTargetSelection({
 /**
  * Resolve targets from a Phase 1 Ability, an actor snapshot, and a read-only
  * context: { players: PlayerSnapshot[], game?: { status } }.
- * Player snapshots need user_id/team/alive; actor additionally needs char_key
- * when the Ability uses an owner allowlist. The authoritative actor row is
- * always read from context.players, keyed by actor.user_id.
+ * Player snapshots must match the D1 row types: integer user_id, string team
+ * (including '' for unassigned), and integer alive (0 or 1). Actor additionally
+ * needs char_key when the Ability uses an owner allowlist. The authoritative
+ * actor row is always read from context.players, keyed by actor.user_id.
  */
 export function resolveTargets({
   ability,
