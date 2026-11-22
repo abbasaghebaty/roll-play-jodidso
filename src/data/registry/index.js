@@ -23,3 +23,11 @@ export {
   getAbilityByKey,
   getAbilitiesByCharacter,
 } from './abilities.js';
+
+export {
+  ABILITY_CATEGORIES,
+  ABILITY_EXECUTION_MODES,
+  validateAbility,
+  validateAbilities,
+  validateAbilityHandlerResult,
+} from '../abilities/contract.js';
