@@ -253,3 +253,119 @@ test('none targeting resolves an empty target list without inventing an actor ta
   assert.equal(forged.status, 'invalid_selection');
   assert.equal(forged.reason, 'selection_not_allowed');
 });
+
+
+test('player snapshots without user_id are rejected as invalid_context', () => {
+  const malformed = { ...players[1] };
+  delete malformed.user_id;
+  const result = resolveTargets({
+    ability: ability('all_enemies', 'automatic'), actor,
+    context: { players: [actor, malformed] },
+  });
+  assert.equal(result.status, 'invalid_context');
+  assert.equal(result.reason, 'invalid_player_snapshot');
+});
+
+test('player snapshots without team are rejected instead of being treated as unassigned', () => {
+  const malformed = { ...players[1] };
+  delete malformed.team;
+  const result = resolveTargets({
+    ability: ability('all_enemies', 'automatic'), actor,
+    context: { players: [actor, malformed] },
+  });
+  assert.equal(result.status, 'invalid_context');
+  assert.equal(result.reason, 'invalid_player_snapshot');
+});
+
+test('player snapshots without alive are rejected instead of being treated as eliminated', () => {
+  const malformed = { ...players[1] };
+  delete malformed.alive;
+  const result = resolveTargets({
+    ability: ability('all_enemies', 'automatic'), actor,
+    context: { players: [actor, malformed] },
+  });
+  assert.equal(result.status, 'invalid_context');
+  assert.equal(result.reason, 'invalid_player_snapshot');
+});
+
+test('player snapshots reject non-string team values', () => {
+  for (const team of [null, 0, false, {}]) {
+    const malformed = { ...players[1], team };
+    const result = resolveTargets({
+      ability: ability('all_enemies', 'automatic'), actor,
+      context: { players: [actor, malformed] },
+    });
+    assert.equal(result.status, 'invalid_context');
+    assert.equal(result.reason, 'invalid_player_snapshot');
+  }
+});
+
+test('player snapshots accept only the D1 integer alive values 0 and 1', () => {
+  for (const alive of [true, false, '1', 2, null]) {
+    const malformed = { ...players[1], alive };
+    const result = resolveTargets({
+      ability: ability('all_enemies', 'automatic'), actor,
+      context: { players: [actor, malformed] },
+    });
+    assert.equal(result.status, 'invalid_context');
+    assert.equal(result.reason, 'invalid_player_snapshot');
+  }
+});
+
+test('a supplied game context without status is invalid', () => {
+  const result = resolveTargets({
+    ability: ability('self', 'automatic'), actor,
+    context: { game: {}, players },
+  });
+  assert.equal(result.status, 'invalid_context');
+  assert.equal(result.reason, 'invalid_game_context');
+});
+
+test('a supplied game context with an invalid status is rejected', () => {
+  for (const game of [{ status: 'paused' }, { status: null }, null, 'active']) {
+    const result = resolveTargets({
+      ability: ability('self', 'automatic'), actor,
+      context: { game, players },
+    });
+    assert.equal(result.status, 'invalid_context');
+    assert.ok(['invalid_game_context', 'game_not_active'].includes(result.reason));
+  }
+});
+
+test('a valid supplied game context with status active is accepted', () => {
+  const result = resolveTargets({
+    ability: ability('self', 'automatic'), actor,
+    context: { game: { status: 'active' }, players },
+  });
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.targets[0].id, 1);
+});
+
+test('omitting the optional game context remains valid', () => {
+  const result = resolveTargets({
+    ability: ability('self', 'automatic'), actor,
+    context: { players },
+  });
+  assert.equal(result.status, 'resolved');
+  assert.equal(result.targets[0].id, 1);
+});
+
+test('an actor identity present only in the external input is not accepted', () => {
+  const result = resolveTargets({
+    ability: ability('self', 'automatic'),
+    actor: { user_id: 99, char_key: 'yuji', team: 'red', alive: 1 },
+    context: { players },
+  });
+  assert.equal(result.status, 'invalid_actor');
+  assert.equal(result.reason, 'actor_not_in_game');
+});
+
+test('external actor fields cannot override the authoritative game snapshot or Ability ownership', () => {
+  const result = resolveTargets({
+    ability: ability('self', 'automatic'),
+    actor: { user_id: 1, char_key: 'maki', team: 'blue', alive: 0 },
+    context: { players },
+  });
+  assert.equal(result.status, 'resolved');
+  assert.deepEqual(result.targets, [{ type: 'player', id: 1, name: 'Actor' }]);
+});
