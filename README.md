@@ -329,6 +329,13 @@ Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به 
 ماژول مستقل `src/game/targeting/resolver.js` از `targeting.mode` و `targeting.selection` قرارداد Ability استفاده می‌کند. این ماژول فقط snapshotهای خواندنی را فیلتر و اعتبارسنجی می‌کند؛ به D1، Telegram، مسیر Combat یا اجرای Effect متصل نیست. نوع‌های Summon و custom تا زمان وجود Runtime واقعی، صریحاً `unsupported` هستند. راهنمای کامل: [docs/TARGET-RESOLVER.md](docs/TARGET-RESOLVER.md).
 
 
-## Ability Planning (Phase 3)
+## Ability Planning (Phase 1–4)
 
-ماژول‌های `src/game/planning/` یک Execution Plan فقط‌خواندنی از Ability، Actor، Context و هدف‌های Resolveشده می‌سازند. این لایه Effectهای `damage/defense` و Costهای `none/fixed NP/legacy` را برنامه‌ریزی می‌کند؛ هیچ Effect یا منبعی را اجرا/مصرف نمی‌کند و به Combat متصل نیست. جزئیات قرارداد ورودی/خروجی و خطاها در [docs/ABILITY-PLANNING.md](docs/ABILITY-PLANNING.md) آمده است.
+معماری Ability به‌صورت مرحله‌ای توسعه یافته است: Phase 1 قرارداد مشترک Ability، Phase 2 Target Resolver مستقل، Phase 3 برنامه‌ریزی Effectهای `damage/defense` و Costهای پایه، و Phase 4 افزودن Healing ثابت و هزینه NP متناسب با تعداد هدف.
+
+قابلیت‌های فعلی Planning:
+- **Effects:** `damage`، `defense` و `heal/fixed`. مقدار Healing صریح و ثابت است؛ سقف HP، Overhealing و فرمول عمومی Healing محاسبه نمی‌شوند.
+- **Costs:** `none`، `fixed NP`، `fixed NP perTarget` و `legacy techNpCost`. با `perTarget: true`، هزینه واحد NP در تعداد هدف‌هایی ضرب می‌شود که Target Resolver واقعاً برگردانده است.
+- **Targeting:** `self` و `all_allies` حالت‌های جداگانه‌اند؛ یک انتخاب واحد نمی‌تواند Actor و همه هم‌تیمی‌های زنده را با هم برگرداند.
+
+این لایه فقط Execution Plan توصیفی و قطعی می‌سازد: Effect اجرا نمی‌شود، HP/NP تغییر نمی‌کند، affordability check یا resource deduction انجام نمی‌شود و Planning به Combat متصل نیست. جزئیات قراردادها، ورودی‌ها و محدودیت‌ها در [docs/ABILITY-PLANNING.md](docs/ABILITY-PLANNING.md) آمده است.
