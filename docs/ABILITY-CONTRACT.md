@@ -94,7 +94,7 @@ handler({
 - [x] تست‌های واحد قرارداد و سازگاری
 - [ ] اجرای Ability از مسیر Combat
 - [x] Target Resolver مستقل و فقط‌خواندنی (Phase 2)
-- [ ] Effect System و Resource Cost Calculator
+- [x] Effect Planning و Resource Cost Calculation فقط‌خواندنی (Phase 3؛ بدون اجرای Effect یا مصرف منبع)
 - [ ] Handler dispatcher و mutation کنترل‌شده Engine
 - [ ] Status، Summon و Round Scheduler
 
@@ -102,3 +102,8 @@ handler({
 ## پیاده‌سازی Target Resolver — Phase 2
 
 Target Resolver از همین فیلدهای `targeting.mode` و `targeting.selection` استفاده می‌کند و قرارداد موازی تعریف نمی‌کند. این مرحله فقط تعیین و اعتبارسنجی هدف‌ها را اضافه کرده است؛ مسیر Combat همچنان از آن استفاده نمی‌کند. جزئیات modeهای پشتیبانی‌شده، وضعیت‌های خروجی و نبود Summon Runtime در [docs/TARGET-RESOLVER.md](TARGET-RESOLVER.md) آمده است.
+
+
+## Ability Planning — Phase 3
+
+ماژول `src/game/planning/` از قرارداد Ability و Target Resolver موجود استفاده می‌کند و خروجی Execution Plan قطعی می‌سازد. این مرحله فقط Effectهای `damage/defense` و Costهای `none/fixed NP/legacy techNpCost` را برنامه‌ریزی می‌کند. برای Fixed Cost فقط NP معتبر است؛ HP و منابع دیگر رد می‌شوند. قرارداد مشترک و Adapterها تغییر نکرده‌اند. خروجی صرفاً intent و مقدار هزینه است؛ هیچ Effect اجرا، منبع مصرف، affordability check یا اتصال Combat انجام نمی‌شود. جزئیات در [ABILITY-PLANNING.md](ABILITY-PLANNING.md) ثبت شده است.

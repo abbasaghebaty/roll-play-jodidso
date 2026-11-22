@@ -26,6 +26,7 @@
 ├── tests/
 │   ├── abilities.test.mjs           # قرارداد، Registry و Adapterهای Ability
 │   ├── targeting.test.mjs           # تعیین و اعتبارسنجی هدف Ability
+│   ├── planning.test.mjs             # Effect/Cost planning و Pipeline یکپارچه
 │   ├── rules.test.mjs
 │   ├── atomic-combat.test.mjs
 │   ├── catalog-search.test.mjs
@@ -127,6 +128,7 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 |---|---|
 | `src/game/selection/` | Sessionهای بازی، درخواست مستقل هر کاربر، اعتبارسنجی لینک، جست‌وجو و ثبت انتخاب خصوصی |
 | `src/game/targeting/resolver.js` | تعیین Candidateهای مجاز و اعتبارسنجی انتخاب هدف بر اساس `ability.targeting`؛ pure و مستقل از UI/D1 |
+| `src/game/planning/` | اعتبارسنجی و ساخت Execution Plan قطعی برای Effectهای `damage/defense` و Costهای پشتیبانی‌شده؛ بدون اجرا یا mutation |
 | `src/game/engine.js` | عملیات وضعیت بازی در D1؛ ثبت اتمیک حمله/NP، حل اتمیک دفاع، خودزنی، همگام‌سازی سقف Catalog و جابه‌جایی compare-and-swap نوبت |
 | `src/game/rules/` | قوانین خالص و مستقل از Telegram/D1؛ قرارداد `finalRoll`، فرمول دمیج/خودزنی و دفاع، محاسبات مستقل دفاع مطلق/رفلکت و جدول تکنیک معکوس. `src/game/rules.js` فقط barrel سازگاری است |
 | `src/game/ui/` | رابط گروه تفکیک‌شده به پیام‌ها و promptها، پنل ثابت و callbackها. `src/game/ui.js` مسیر سازگاری exportهاست |
@@ -325,3 +327,8 @@ Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به 
 ## Target Resolver (Phase 2)
 
 ماژول مستقل `src/game/targeting/resolver.js` از `targeting.mode` و `targeting.selection` قرارداد Ability استفاده می‌کند. این ماژول فقط snapshotهای خواندنی را فیلتر و اعتبارسنجی می‌کند؛ به D1، Telegram، مسیر Combat یا اجرای Effect متصل نیست. نوع‌های Summon و custom تا زمان وجود Runtime واقعی، صریحاً `unsupported` هستند. راهنمای کامل: [docs/TARGET-RESOLVER.md](docs/TARGET-RESOLVER.md).
+
+
+## Ability Planning (Phase 3)
+
+ماژول‌های `src/game/planning/` یک Execution Plan فقط‌خواندنی از Ability، Actor، Context و هدف‌های Resolveشده می‌سازند. این لایه Effectهای `damage/defense` و Costهای `none/fixed NP/legacy` را برنامه‌ریزی می‌کند؛ هیچ Effect یا منبعی را اجرا/مصرف نمی‌کند و به Combat متصل نیست. جزئیات قرارداد ورودی/خروجی و خطاها در [docs/ABILITY-PLANNING.md](docs/ABILITY-PLANNING.md) آمده است.
