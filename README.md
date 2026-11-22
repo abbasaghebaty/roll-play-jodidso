@@ -16,6 +16,7 @@
 │   └── 0003_private_character_selection.sql
 ├── docs/
 │   ├── ABILITY-CONTRACT.md          # قرارداد مشترک Ability و سازگاری قدیمی
+│   ├── TARGET-RESOLVER.md           # قرارداد و API تعیین/اعتبارسنجی اهداف Ability
 │   ├── character-selection.md
 │   └── jujutsu/
 │       ├── README.md
@@ -24,6 +25,7 @@
 │       └── 01..11-topic-files.md
 ├── tests/
 │   ├── abilities.test.mjs           # قرارداد، Registry و Adapterهای Ability
+│   ├── targeting.test.mjs           # تعیین و اعتبارسنجی هدف Ability
 │   ├── rules.test.mjs
 │   ├── atomic-combat.test.mjs
 │   ├── catalog-search.test.mjs
@@ -56,6 +58,7 @@
     │   └── validation/               # Catalog integrity checks
     └── game/
         ├── selection/                # private selection sessions and requests
+        ├── targeting/                # pure Ability target resolution and validation
         ├── engine.js
         ├── rules.js              # backward-compatible entry point
         ├── rules/
@@ -123,6 +126,7 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 | فایل | مسئولیت |
 |---|---|
 | `src/game/selection/` | Sessionهای بازی، درخواست مستقل هر کاربر، اعتبارسنجی لینک، جست‌وجو و ثبت انتخاب خصوصی |
+| `src/game/targeting/resolver.js` | تعیین Candidateهای مجاز و اعتبارسنجی انتخاب هدف بر اساس `ability.targeting`؛ pure و مستقل از UI/D1 |
 | `src/game/engine.js` | عملیات وضعیت بازی در D1؛ ثبت اتمیک حمله/NP، حل اتمیک دفاع، خودزنی، همگام‌سازی سقف Catalog و جابه‌جایی compare-and-swap نوبت |
 | `src/game/rules/` | قوانین خالص و مستقل از Telegram/D1؛ قرارداد `finalRoll`، فرمول دمیج/خودزنی و دفاع، محاسبات مستقل دفاع مطلق/رفلکت و جدول تکنیک معکوس. `src/game/rules.js` فقط barrel سازگاری است |
 | `src/game/ui/` | رابط گروه تفکیک‌شده به پیام‌ها و promptها، پنل ثابت و callbackها. `src/game/ui.js` مسیر سازگاری exportهاست |
@@ -191,6 +195,7 @@ npx wrangler tail
 - **شخصیت جدید یا HP/NP پایه:** فایل فرنچایز مربوط در `src/data/catalog/characters/`؛ برای اتصال/جست‌وجو `src/data/registry/`
 - **تکنیک و مشخصات آن:** فایل فرنچایز مربوط در `src/data/catalog/techniques/`؛ **فرمول حمله/هزینه NP:** `src/game/rules/attack.js`؛ **رنک حمله:** `src/game/rules/ranks/attack.js`
 - **تعریف دفاع:** `src/data/catalog/defenses/`؛ **فرمول دفاع:** `src/game/rules/defense.js`؛ **رنک دفاع:** `src/game/rules/ranks/defense.js`
+- **تعیین و اعتبارسنجی اهداف Ability:** `src/game/targeting/resolver.js`؛ جزئیات API در `docs/TARGET-RESOLVER.md`
 - **قوانین نوبت، زنده‌بودن، برنده یا دمیج در دیتابیس:** `src/game/engine.js`
 - **انتخاب خصوصی:** `src/game/selection/requests.js` (Session و درخواست D1)، `resolver.js` (جست‌وجو و تأیید)، `src/commands/index.js` (مسیر پیام خصوصی)
 - **پنل مبارزه:** `src/game/ui/panel.js`؛ **پیام‌ها و منوها:** `src/game/ui/prompts.js`؛ **callbackهای مبارزه:** `src/game/ui/callbacks.js`
@@ -315,3 +320,8 @@ Deploy به‌تنهایی Migration اجرا نمی‌کند. کدی که به 
 ## قرارداد مشترک Ability
 
 قرارداد داده‌ای مشترک و Adapterهای سازگاری در [docs/ABILITY-CONTRACT.md](docs/ABILITY-CONTRACT.md) مستند شده‌اند. این لایه فعلاً فقط projection، Registry و Validation است؛ مسیر فعلی Combat همچنان از `TECHNIQUES` و `DEFENSES` قدیمی استفاده می‌کند و هیچ Effect/Target/Handler جدیدی را اجرا نمی‌کند.
+
+
+## Target Resolver (Phase 2)
+
+ماژول مستقل `src/game/targeting/resolver.js` از `targeting.mode` و `targeting.selection` قرارداد Ability استفاده می‌کند. این ماژول فقط snapshotهای خواندنی را فیلتر و اعتبارسنجی می‌کند؛ به D1، Telegram، مسیر Combat یا اجرای Effect متصل نیست. نوع‌های Summon و custom تا زمان وجود Runtime واقعی، صریحاً `unsupported` هستند. راهنمای کامل: [docs/TARGET-RESOLVER.md](docs/TARGET-RESOLVER.md).
