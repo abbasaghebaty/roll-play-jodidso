@@ -26,6 +26,7 @@
 ├── tests/
 │   ├── abilities.test.mjs           # قرارداد، Registry و Adapterهای Ability
 │   ├── targeting.test.mjs           # تعیین و اعتبارسنجی هدف Ability
+│   ├── planning.test.mjs             # Effect/Cost planning و Pipeline یکپارچه
 │   ├── rules.test.mjs
 │   ├── atomic-combat.test.mjs
 │   ├── catalog-search.test.mjs
@@ -127,6 +128,7 @@ Catalogهای زیر منبع canonical داده‌های ثابت‌اند؛ ف
 |---|---|
 | `src/game/selection/` | Sessionهای بازی، درخواست مستقل هر کاربر، اعتبارسنجی لینک، جست‌وجو و ثبت انتخاب خصوصی |
 | `src/game/targeting/resolver.js` | تعیین Candidateهای مجاز و اعتبارسنجی انتخاب هدف بر اساس `ability.targeting`؛ pure و مستقل از UI/D1 |
+| `src/game/planning/` | اعتبارسنجی و ساخت Execution Plan قطعی برای Effectهای `damage/defense` و Costهای پشتیبانی‌شده؛ بدون اجرا یا mutation |
 | `src/game/engine.js` | عملیات وضعیت بازی در D1؛ ثبت اتمیک حمله/NP، حل اتمیک دفاع، خودزنی، همگام‌سازی سقف Catalog و جابه‌جایی compare-and-swap نوبت |
 | `src/game/rules/` | قوانین خالص و مستقل از Telegram/D1؛ قرارداد `finalRoll`، فرمول دمیج/خودزنی و دفاع، محاسبات مستقل دفاع مطلق/رفلکت و جدول تکنیک معکوس. `src/game/rules.js` فقط barrel سازگاری است |
 | `src/game/ui/` | رابط گروه تفکیک‌شده به پیام‌ها و promptها، پنل ثابت و callbackها. `src/game/ui.js` مسیر سازگاری exportهاست |
