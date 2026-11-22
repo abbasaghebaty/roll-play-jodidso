@@ -21,14 +21,14 @@
 | `category` | دسته قابلیت مانند `attack`, `defense`, `support`, `summon` یا `utility` |
 | `owners` | `{ mode: 'any' }` یا `{ mode: 'allowlist', characterIds: [...] }` |
 | `conditions` | فهرست توصیفی شرط‌ها؛ هنوز ارزیابی نمی‌شوند |
-| `targeting` | `{ mode, selection }`؛ حالت هدف‌گیری توصیفی است و Target Resolver نیست |
+| `targeting` | `{ mode, selection }`؛ قرارداد مشترک هدف‌گیری است و توسط `src/game/targeting/resolver.js` تفسیر می‌شود؛ فهرست modeها و محدودیت Runtime در [TARGET-RESOLVER.md](TARGET-RESOLVER.md) ثبت شده است |
 | `cost` | توصیف روش هزینه؛ `legacy` به resolver قدیمی اشاره می‌کند |
 | `effects` | توصیف effect intentها؛ اجرا نمی‌شوند |
 | `execution` | روش اجرا و در صورت نیاز شناسه Handler |
 | `config` | تنظیمات اختصاصی قابلیت، بدون تحمیل فیلدهای آینده به همه Catalogها |
 | `active` | وضعیت فعال بودن رکورد در Registry |
 
-مقادیر targeting و cost عمداً به فهرست بسته‌ای محدود نشده‌اند تا افزودن نوع‌های جدید قرارداد را مجبور به شکستن نکند. Validation شکل پایه را بررسی می‌کند و semantics را تفسیر نمی‌کند.
+مقادیر targeting و cost در قرارداد داده‌ای به فهرست بسته‌ای محدود نشده‌اند تا افزودن نوع‌های جدید قرارداد را مجبور به شکستن نکند. Validation شکل پایه را بررسی می‌کند؛ semantics هدف‌گیری فقط در Target Resolver مستقل تفسیر می‌شود.
 
 ## Adapterهای سازگاری
 
@@ -84,7 +84,7 @@ handler({
 
 تا زمانی که Handler، resolver هدف/هزینه و Engine مربوطه ساخته نشده‌اند، چنین رکوردی صرفاً داده توصیفی است و نباید به UI یا مسیر Combat متصل شود.
 
-## وضعیت Phase 1
+## وضعیت توسعه قرارداد Ability و Target Resolver
 
 - [x] قرارداد داده‌ای Ability
 - [x] Adapter تکنیک‌های قدیمی
@@ -93,6 +93,12 @@ handler({
 - [x] Validation ساختاری و Handler result
 - [x] تست‌های واحد قرارداد و سازگاری
 - [ ] اجرای Ability از مسیر Combat
-- [ ] Target Resolver، Effect System و Resource Cost Calculator
+- [x] Target Resolver مستقل و فقط‌خواندنی (Phase 2)
+- [ ] Effect System و Resource Cost Calculator
 - [ ] Handler dispatcher و mutation کنترل‌شده Engine
 - [ ] Status، Summon و Round Scheduler
+
+
+## پیاده‌سازی Target Resolver — Phase 2
+
+Target Resolver از همین فیلدهای `targeting.mode` و `targeting.selection` استفاده می‌کند و قرارداد موازی تعریف نمی‌کند. این مرحله فقط تعیین و اعتبارسنجی هدف‌ها را اضافه کرده است؛ مسیر Combat همچنان از آن استفاده نمی‌کند. جزئیات modeهای پشتیبانی‌شده، وضعیت‌های خروجی و نبود Summon Runtime در [docs/TARGET-RESOLVER.md](TARGET-RESOLVER.md) آمده است.
