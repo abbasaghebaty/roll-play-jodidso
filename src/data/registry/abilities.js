@@ -13,19 +13,19 @@ for (const character of CHARACTER_CATALOG) {
   }
 }
 
-export const ABILITY_CATALOG = [
+export const REGISTERED_ABILITIES = [
   ...TECHNIQUE_CATALOG.map((item) => adaptTechniqueToAbility(item, {
     allowedCharacterIds: techniqueOwners.get(item.id) || [],
   })),
   ...DEFENSE_CATALOG.map(adaptDefenseToAbility),
 ];
 
-const byId = new Map(ABILITY_CATALOG.map((item) => [item.id, item]));
-const byCode = new Map(ABILITY_CATALOG.map((item) => [item.code.toUpperCase(), item]));
-const byKey = new Map(ABILITY_CATALOG.map((item) => [item.key, item]));
+const byId = new Map(REGISTERED_ABILITIES.map((item) => [item.id, item]));
+const byCode = new Map(REGISTERED_ABILITIES.map((item) => [item.code.toUpperCase(), item]));
+const byKey = new Map(REGISTERED_ABILITIES.map((item) => [item.key, item]));
 
 export function listAbilities({ includeInactive = false, category = null } = {}) {
-  return ABILITY_CATALOG.filter((item) =>
+  return REGISTERED_ABILITIES.filter((item) =>
     (includeInactive || item.active) && (!category || item.category === category)
   );
 }

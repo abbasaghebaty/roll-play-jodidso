@@ -7,7 +7,7 @@ import { CHARACTERS } from '../src/data/characters.js';
 import { TECHNIQUES } from '../src/data/techniques.js';
 import { DEFENSES } from '../src/data/defenses.js';
 import {
-  ABILITY_CATALOG, getAbilitiesByCharacter, getAbilityByCode, getAbilityById,
+  REGISTERED_ABILITIES, getAbilitiesByCharacter, getAbilityByCode, getAbilityById,
   getAbilityByKey, listAbilities,
 } from '../src/data/registry/abilities.js';
 import { adaptDefenseToAbility, adaptTechniqueToAbility } from '../src/data/adapters/abilities.js';
@@ -69,7 +69,7 @@ test('Ability projection leaves legacy runtime data and character stats unchange
   assert.deepEqual(DEFENSES.dodge, {
     name: 'جاخالی', rank: 'dodge', base: 0, perDie: 5,
   });
-  assert.equal(ABILITY_CATALOG.length, TECHNIQUE_CATALOG.length + DEFENSE_CATALOG.length);
+  assert.equal(REGISTERED_ABILITIES.length, TECHNIQUE_CATALOG.length + DEFENSE_CATALOG.length);
   assert.equal(CHARACTER_CATALOG.find((item) => item.key === 'yuji').stats.hp, 205);
 });
 

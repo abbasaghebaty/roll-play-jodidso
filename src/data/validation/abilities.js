@@ -1,8 +1,8 @@
 import { validateAbilities } from '../abilities/contract.js';
-import { ABILITY_CATALOG } from '../registry/abilities.js';
+import { REGISTERED_ABILITIES } from '../registry/abilities.js';
 import { CHARACTER_CATALOG } from '../catalog/characters/index.js';
 
-export function validateAbilityCatalog(abilities = ABILITY_CATALOG) {
+export function validateAbilityCatalog(abilities = REGISTERED_ABILITIES) {
   const errors = validateAbilities(abilities);
   const characterIds = new Set(CHARACTER_CATALOG.map((item) => item.id));
   if (Array.isArray(abilities)) {

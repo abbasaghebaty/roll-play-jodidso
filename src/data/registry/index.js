@@ -16,7 +16,7 @@ export {
 export { searchCharacters, searchCharacterRecords, normalizeSearchText, damerauLevenshtein } from './search.js';
 
 export {
-  ABILITY_CATALOG,
+  REGISTERED_ABILITIES,
   listAbilities,
   getAbilityById,
   getAbilityByCode,

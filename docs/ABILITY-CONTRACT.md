@@ -6,9 +6,9 @@
 
 ## تصمیم معماری
 
-- Catalogهای Canonical شخصیت، تکنیک و دفاع مستقل باقی می‌مانند.
+- Catalogهای Canonical شخصیت، تکنیک و دفاع مستقل باقی می‌مانند؛ هیچ Ability Catalog مرکزی به‌عنوان منبع حقیقت ساخته نشده است.
 - `src/data/adapters/abilities.js` رکوردهای فعلی تکنیک/دفاع را بدون تغییر منبع اصلی به شکل Ability projection تبدیل می‌کند.
-- `src/data/registry/abilities.js` دسترسی یکپارچه بر اساس ID، Code، Key، دسته و شخصیت را فراهم می‌کند.
+- `src/data/registry/abilities.js` از Catalogهای موجود یک projection خواندنی (نه منبع canonical) می‌سازد و دسترسی یکپارچه بر اساس ID، Code، Key، دسته و شخصیت را فراهم می‌کند.
 - `src/data/abilities/contract.js` ساختار و نتیجه Handler را اعتبارسنجی می‌کند.
 - داده‌های قدیمی `CHARACTERS`، `TECHNIQUES` و `DEFENSES` همچنان از Adapterهای قبلی خودشان ساخته می‌شوند؛ مسیر Combat فعلی هنوز همان داده‌ها را مصرف می‌کند.
 
