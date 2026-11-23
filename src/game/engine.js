@@ -23,10 +23,10 @@ export async function syncPlayerCatalogCaps(env, chat) {
     const marks = chunk.map(() => '?').join(',');
     statements.push({
       sql: `UPDATE players SET
-        max_hp=CASE char_key ${hpCase} ELSE max_hp END,
-        hp=MIN(hp,CASE char_key ${hpCase} ELSE hp END),
-        max_np=CASE char_key ${npCase} ELSE max_np END,
-        np=MIN(np,CASE char_key ${npCase} ELSE np END)
+        max_hp=MAX(max_hp,CASE char_key ${hpCase} ELSE max_hp END),
+        hp=MIN(hp,MAX(max_hp,CASE char_key ${hpCase} ELSE max_hp END)),
+        max_np=MAX(max_np,CASE char_key ${npCase} ELSE max_np END),
+        np=MIN(np,MAX(max_np,CASE char_key ${npCase} ELSE max_np END))
         WHERE chat_id=? AND char_key IN (${marks})`,
       args: [...pairs('hp'), ...pairs('hp'), ...pairs('np'), ...pairs('np'), chat,
         ...chunk.map((character) => character.key)],
@@ -38,6 +38,28 @@ export async function syncPlayerCatalogCaps(env, chat) {
 
 export async function getPlayer(env, chat, uid) {
   return await first(env.DB, 'SELECT * FROM players WHERE chat_id=? AND user_id=?', chat, uid);
+}
+
+// Apply master HP adjustments as database arithmetic so concurrent combat damage
+// cannot be overwritten by a value read before the adjustment.
+export async function adjustPlayerHp(env, chat, uid, amount) {
+  const delta = Math.trunc(Number(amount) || 0);
+  await run(env.DB, `UPDATE players SET
+    hp=MAX(0,hp+?),
+    max_hp=MAX(max_hp,MAX(0,hp+?)),
+    alive=CASE WHEN MAX(0,hp+?)>0 THEN 1 ELSE 0 END
+    WHERE chat_id=? AND user_id=?`, delta, delta, delta, chat, uid);
+  return getPlayer(env, chat, uid);
+}
+
+// NP uses the same atomic adjustment rule and expands its ceiling only when needed.
+export async function adjustPlayerNp(env, chat, uid, amount) {
+  const delta = Math.trunc(Number(amount) || 0);
+  await run(env.DB, `UPDATE players SET
+    np=MAX(0,np+?),
+    max_np=MAX(max_np,MAX(0,np+?))
+    WHERE chat_id=? AND user_id=?`, delta, delta, chat, uid);
+  return getPlayer(env, chat, uid);
 }
 export async function alivePlayers(env, chat) {
   return await all(env.DB, 'SELECT * FROM players WHERE chat_id=? AND alive=1 ORDER BY seat, user_id', chat);
