@@ -306,3 +306,17 @@ test('unavailable-target cleanup does not clear a living target defense', async 
   assert.equal(await clearUnavailablePendingDefenses({ DB }, 10, 2), 0);
   assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=2').bind().first()).n, 2);
 });
+
+
+test('a Telegram group leaver has their pending defenses cleared even while their player row is alive', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare("INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,3,100,1,100,'',3)").bind().run();
+  await DB.prepare('INSERT INTO pending(chat_id,attacker_id,target_id,dmg,tech) VALUES(10,1,3,30,?)').bind('other-target').run();
+
+  const { clearPendingDefenseForTarget } = await import('../src/game/engine.js');
+  const cleared = await clearPendingDefenseForTarget({ DB }, 10, 2);
+
+  assert.equal(cleared, 2);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=2').bind().first()).n, 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=3').bind().first()).n, 1);
+});
