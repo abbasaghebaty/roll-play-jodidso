@@ -12,7 +12,7 @@ import {
   completeCharacterSelection,
 } from '../src/game/selection/requests.js';
 import { getCharacterByKey } from '../src/data/registry/characters.js';
-import { syncPlayerCatalogCaps } from '../src/game/engine.js';
+import { syncPlayerCatalogCaps, adjustPlayerHp, adjustPlayerNp } from '../src/game/engine.js';
 
 class SQLiteD1 {
   constructor() {
@@ -253,17 +253,49 @@ test('migration 0003 preserves existing game rows and adds only selection metada
     'character_selection_requests');
 });
 
-test('live Catalog cap reconciliation limits excess HP/NP and never refills lower values', async () => {
+test('Catalog cap reconciliation preserves buff-expanded ceilings and clamps only to the persisted ceiling', async () => {
   const DB = new SQLiteD1();
   await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
-    VALUES(10,1,'Above','yuji',250,250,300,300,0)`).bind().run();
+    VALUES(10,1,'Buffed','yuji',300,250,350,300,0)`).bind().run();
   await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
-    VALUES(10,2,'Below','yuji',80,205,100,210,1)`).bind().run();
+    VALUES(10,2,'Below','yuji',80,200,100,200,1)`).bind().run();
   await syncPlayerCatalogCaps({ DB }, 10);
-  const above = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
+  const buffed = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
   const below = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=2').bind().first();
-  assert.deepEqual({ ...above }, { hp: 205, max_hp: 205, np: 210, max_np: 210 });
+  assert.deepEqual({ ...buffed }, { hp: 250, max_hp: 250, np: 300, max_np: 300 });
   assert.deepEqual({ ...below }, { hp: 80, max_hp: 205, np: 100, max_np: 210 });
+  await syncPlayerCatalogCaps({ DB }, 10);
+  const repeated = await DB.prepare('SELECT hp,max_hp,np,max_np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
+  assert.deepEqual({ ...repeated }, { hp: 250, max_hp: 250, np: 300, max_np: 300 });
+});
+
+test('HP buff adjustment uses the latest database value instead of overwriting newer combat damage', async () => {
+  const DB = new SQLiteD1();
+  await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
+    VALUES(10,1,'Player','yuji',100,100,100,100,0)`).bind().run();
+
+  const stale = await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=1').bind().first();
+  assert.equal(stale.hp, 100);
+  await DB.prepare('UPDATE players SET hp=MAX(0,hp-20) WHERE chat_id=10 AND user_id=1').bind().run();
+
+  const updated = await adjustPlayerHp({ DB }, 10, 1, 30);
+  assert.equal(updated.hp, 110);
+  assert.equal(updated.max_hp, 110);
+  assert.equal(updated.alive, 1);
+});
+
+test('NP buff adjustment uses the latest database value instead of overwriting newer combat spending', async () => {
+  const DB = new SQLiteD1();
+  await DB.prepare(`INSERT INTO players(chat_id,user_id,name,char_key,hp,max_hp,np,max_np,seat)
+    VALUES(10,1,'Player','yuji',100,100,100,100,0)`).bind().run();
+
+  const stale = await DB.prepare('SELECT np FROM players WHERE chat_id=10 AND user_id=1').bind().first();
+  assert.equal(stale.np, 100);
+  await DB.prepare('UPDATE players SET np=np-30 WHERE chat_id=10 AND user_id=1').bind().run();
+
+  const updated = await adjustPlayerNp({ DB }, 10, 1, 40);
+  assert.equal(updated.np, 110);
+  assert.equal(updated.max_np, 110);
 });
 
 test('expired shared lobby tokens cannot start new private requests', async () => {
