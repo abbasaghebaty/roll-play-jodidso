@@ -112,6 +112,15 @@ export async function clearUnavailablePendingDefenses(env, chat, targetId = null
   return Number(result?.meta?.changes ?? result?.changes ?? 0);
 }
 
+// A Telegram left-chat service update is direct evidence that this target
+// cannot answer the outstanding defense prompt in this group.
+export async function clearPendingDefenseForTarget(env, chat, targetId) {
+  const result = await run(env.DB,
+    'DELETE FROM pending WHERE chat_id=? AND target_id=?',
+    chat, targetId);
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
+}
+
 // تمام ضربه‌های منتظر یک هدف را در یک D1 batch حل می‌کند.
 // operationId یکتا است؛ changes() باعث می‌شود callback تکراری هیچ تغییری ندهد.
 export async function resolvePendingDefense(env, chat, targetId, defenseValue, operationId) {
