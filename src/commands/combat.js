@@ -4,7 +4,7 @@ import { CHARACTERS } from '../data/characters.js';
 import { TECHNIQUES } from '../data/techniques.js';
 import { DEFENSES } from '../data/defenses.js';
 import { rollAttack, techDamage, techSelfDamage, techNpCost, d10, defenseValue } from '../game/rules.js';
-import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, clearUnavailablePendingDefenses, commitAttack, commitSelfDamage } from '../game/engine.js';
+import { getGame, getPlayer, alivePlayers, checkWin, advanceTurn, applyDamage, resolvePendingDefense, clearUnavailablePendingDefenses, clearPendingDefenseForTarget, commitAttack, commitSelfDamage } from '../game/engine.js';
 import { say, sayFlow, isMaster, resolveId, own } from '../util.js';
 import { mention, esc } from '../telegram.js';
 import { clearResults } from '../game/cleanup.js';
@@ -33,6 +33,16 @@ async function passTurn(ctx) {
   await run(ctx.env.DB, 'DELETE FROM battle_turn_ui WHERE chat_id=?', ctx.chat);
   ctx.refreshAfter = true;
   return next ? `\n\n🎯 نوبت: ${mention(next)}` : '';
+}
+
+// A Telegram left-chat service message means this target cannot answer now.
+export async function handleUnavailableDefenseTarget(ctx, targetId) {
+  const cleared = await clearPendingDefenseForTarget(ctx.env, ctx.chat, targetId);
+  if (!cleared) return;
+  await clearDefensePrompts(ctx.env, ctx.chat, targetId);
+  const tail = await afterResolve(ctx);
+  await sayThenRefresh(ctx,
+    `⚠️ هدف ${targetId} از گروه خارج شد؛ ${cleared} حمله منتظر بدون اعمال دمیج پاک شد.${tail}`);
 }
 async function resolveHits(ctx, target, defValue, label) {
   const { env, chat } = ctx;
