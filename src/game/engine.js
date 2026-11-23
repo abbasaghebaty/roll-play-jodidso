@@ -95,6 +95,32 @@ export async function applyDamage(env, chat, target, dmg) {
   return { hp: row.hp, dead: !row.alive };
 }
 
+// Remove defense waits only when their target can no longer respond.
+// Live targets keep their pending hits and normal defense flow unchanged.
+export async function clearUnavailablePendingDefenses(env, chat, targetId = null) {
+  const targetFilter = targetId == null ? '' : 'AND pending.target_id=?';
+  const result = await run(env.DB,
+    `DELETE FROM pending
+      WHERE chat_id=? ${targetFilter}
+        AND NOT EXISTS (
+          SELECT 1 FROM players
+          WHERE players.chat_id=pending.chat_id
+            AND players.user_id=pending.target_id
+            AND players.alive=1
+        )`,
+    ...(targetId == null ? [chat] : [chat, targetId]));
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
+}
+
+// A Telegram left-chat service update is direct evidence that this target
+// cannot answer the outstanding defense prompt in this group.
+export async function clearPendingDefenseForTarget(env, chat, targetId) {
+  const result = await run(env.DB,
+    'DELETE FROM pending WHERE chat_id=? AND target_id=?',
+    chat, targetId);
+  return Number(result?.meta?.changes ?? result?.changes ?? 0);
+}
+
 // تمام ضربه‌های منتظر یک هدف را در یک D1 batch حل می‌کند.
 // operationId یکتا است؛ changes() باعث می‌شود callback تکراری هیچ تغییری ندهد.
 export async function resolvePendingDefense(env, chat, targetId, defenseValue, operationId) {

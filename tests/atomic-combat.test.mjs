@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolvePendingDefense, commitAttack, commitSelfDamage } from '../src/game/engine.js';
+import { resolvePendingDefense, clearUnavailablePendingDefenses, advanceTurn, commitAttack, commitSelfDamage } from '../src/game/engine.js';
 import { techSelfDamage } from '../src/game/rules/attack.js';
 
 // SQLite-backed D1 adapter: exercises the SQL and ordered transactional batch contract.
@@ -261,4 +261,62 @@ test('live self-damage calculation commits the rounded damage atomically for eve
     assert.equal(action.completed, 1);
     assert.equal(action.turn_claim, 1);
   }
+});
+
+
+test('unavailable dead target loses pending defense waits without taking additional damage', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('UPDATE players SET hp=0,alive=0 WHERE chat_id=10 AND user_id=2').bind().run();
+
+  const cleared = await clearUnavailablePendingDefenses({ DB }, 10);
+
+  assert.equal(cleared, 2);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10').bind().first()).n, 0);
+  assert.equal((await DB.prepare('SELECT hp FROM players WHERE chat_id=10 AND user_id=2').bind().first()).hp, 0);
+});
+
+test('pending defense for a removed player is cleared, while a live target remains pending', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare('DELETE FROM players WHERE chat_id=10 AND user_id=2').bind().run();
+  await DB.prepare("INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,3,100,1,100,'',3)").bind().run();
+  await DB.prepare('INSERT INTO pending(chat_id,attacker_id,target_id,dmg,tech) VALUES(10,1,3,30,?)').bind('live-target').run();
+
+  const cleared = await clearUnavailablePendingDefenses({ DB }, 10);
+
+  assert.equal(cleared, 2);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=2').bind().first()).n, 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=3').bind().first()).n, 1);
+});
+
+test('turn advancement is no longer blocked by a dead target pending defense', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare("INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,3,100,1,100,'',3)").bind().run();
+  await DB.prepare('UPDATE players SET hp=0,alive=0 WHERE chat_id=10 AND user_id=2').bind().run();
+
+  assert.equal(await clearUnavailablePendingDefenses({ DB }, 10), 2);
+  const next = await advanceTurn({ DB }, 10, 1);
+
+  assert.equal(next.user_id, 3);
+  assert.equal((await DB.prepare('SELECT turn_user FROM games WHERE chat_id=10').bind().first()).turn_user, 3);
+});
+
+test('unavailable-target cleanup does not clear a living target defense', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+
+  assert.equal(await clearUnavailablePendingDefenses({ DB }, 10, 2), 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=2').bind().first()).n, 2);
+});
+
+
+test('a Telegram group leaver has their pending defenses cleared even while their player row is alive', async () => {
+  const DB = new SQLiteD1(); await seed(DB);
+  await DB.prepare("INSERT INTO players(chat_id,user_id,hp,alive,np,team,seat) VALUES(10,3,100,1,100,'',3)").bind().run();
+  await DB.prepare('INSERT INTO pending(chat_id,attacker_id,target_id,dmg,tech) VALUES(10,1,3,30,?)').bind('other-target').run();
+
+  const { clearPendingDefenseForTarget } = await import('../src/game/engine.js');
+  const cleared = await clearPendingDefenseForTarget({ DB }, 10, 2);
+
+  assert.equal(cleared, 2);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=2').bind().first()).n, 0);
+  assert.equal((await DB.prepare('SELECT COUNT(*) n FROM pending WHERE chat_id=10 AND target_id=3').bind().first()).n, 1);
 });
