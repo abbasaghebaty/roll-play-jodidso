@@ -8,7 +8,7 @@ import { syncPlayerCatalogCaps } from '../game/engine.js';
 import { handleSelectionCallback, handleSelectionText, startCharacterSelection } from '../game/selection/index.js';
 import { newgame, endgame, team, begin, buff, effect } from './admin.js';
 import { chars, techs, defenses, status, help } from './players.js';
-import { attack, defend, nodefend } from './combat.js';
+import { attack, defend, nodefend, handleUnavailableDefenseTarget } from './combat.js';
 
 const ANON_ADMIN_ID = 1087968824; // Telegram's fixed id for anonymous group admins
 
@@ -37,6 +37,20 @@ export async function handleUpdate(update, env) {
   if (m?.chat && m.chat.type !== 'private') {
     await syncPlayerCatalogCaps(env, m.chat.id);
   }
+
+  // A group member leaving cannot answer any outstanding defense prompt.
+  if (m?.left_chat_member?.id && m.chat?.type !== 'private') {
+    await handleUnavailableDefenseTarget({
+      env,
+      chat: m.chat.id,
+      uid: m.left_chat_member.id,
+      uname: [m.left_chat_member.first_name, m.left_chat_member.last_name].filter(Boolean).join(' ') || 'بازیکن',
+      msgId: m.message_id,
+      refreshAfter: false,
+    }, m.left_chat_member.id);
+    return;
+  }
+
   if (!m || !m.from || typeof m.text !== 'string') return;
   const priv = m.chat.type === 'private';
   const isCommand = m.text.trim().startsWith('/');
