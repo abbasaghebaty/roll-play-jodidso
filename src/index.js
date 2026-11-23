@@ -29,6 +29,30 @@ async function firstTime(env, id) {
   return true;
 }
 
+// Keep the reservation while a handler is running. Release it only on failure,
+// so Telegram can retry the update; successful updates remain deduplicated.
+async function releaseUpdate(env, id) {
+  if (!Number.isInteger(id)) return;
+  await run(env.DB, 'DELETE FROM processed_updates WHERE update_id=?', id);
+}
+
+export async function processUpdateOnce(env, id, handler) {
+  if (!(await firstTime(env, id))) return false;
+  try {
+    await handler();
+    return true;
+  } catch (error) {
+    if (Number.isInteger(id)) {
+      try {
+        await releaseUpdate(env, id);
+      } catch (releaseError) {
+        console.error('Could not release failed Telegram update:', releaseError);
+      }
+    }
+    throw error;
+  }
+}
+
 export default {
   async fetch(req, env) {
     if (req.method !== 'POST') {
@@ -49,12 +73,13 @@ export default {
       return new Response('invalid JSON', { status: 400 });
     }
 
-    if (!(await firstTime(env, update.update_id))) {
-      return new Response('duplicate');
-    }
-
     try {
-      await handleUpdate(update, env);
+      const processed = await processUpdateOnce(
+        env,
+        update.update_id,
+        () => handleUpdate(update, env)
+      );
+      if (!processed) return new Response('duplicate');
     } catch (e) {
       console.error('Failed to handle Telegram update:', e);
 
@@ -116,6 +141,8 @@ export default {
           console.error('Could not notify chat about error:', e2);
         }
       }
+      // A non-2xx response asks Telegram to retry the update.
+      return new Response('update processing failed', { status: 500 });
     }
 
     return new Response('ok');
