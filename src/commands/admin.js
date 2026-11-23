@@ -1,7 +1,7 @@
 // Master-only and administrative game commands.
 // Numerical combat rules belong in src/game/rules/, not in this module.
 import { run, batch } from '../db.js';
-import { getGame, getPlayer, alivePlayers, checkWin } from '../game/engine.js';
+import { getGame, getPlayer, alivePlayers, checkWin, adjustPlayerHp, adjustPlayerNp } from '../game/engine.js';
 import { say, isMaster, resolveId } from '../util.js';
 import { mention, esc } from '../telegram.js';
 import { ensureBattlePanel, refreshBattlePanel } from '../game/ui.js';
@@ -116,31 +116,25 @@ export async function buff(ctx) {
     return say(ctx, 'روی پیام بازیکن ریپلای کن: <code>/buff hp 20</code> یا <code>/buff np 30</code>');
   }
 
-  const p = await getPlayer(ctx.env, ctx.chat, tid);
-
-  if (!p) return say(ctx, 'این بازیکن در بازی نیست.');
-
   if (kind === 'hp') {
-    const hp = Math.max(0, p.hp + amount);
+    const player = await adjustPlayerHp(ctx.env, ctx.chat, tid, amount);
+    if (!player) return say(ctx, 'این بازیکن در بازی نیست.');
 
-    await run(ctx.env.DB, 'UPDATE players SET hp=?, max_hp=MAX(max_hp, ?), alive=? WHERE chat_id=? AND user_id=?', hp, hp, hp > 0 ? 1 : 0, ctx.chat, p.user_id);
-
-    if (hp <= 0) {
+    if (player.hp <= 0) {
       const win = await checkWin(ctx.env, ctx.chat);
 
       if (win) {
         ctx.refreshAfter = true;
-        return sayThenRefresh(ctx, `✨ باف جان: ${mention(p)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`);
+        return sayThenRefresh(ctx, `✨ باف جان: ${mention(player)} → ❤️ 0 ☠️ حذف شد\n\n🏆 بازی تمام شد! برنده: ${win.length ? win.map(mention).join('، ') : 'هیچ‌کس'}`);
       }
     }
 
-    return say(ctx, `✨ باف جان: ${mention(p)} → ❤️ ${hp}`);
+    return say(ctx, `✨ باف جان: ${mention(player)} → ❤️ ${player.hp}`);
   }
 
-  const np = Math.max(0, p.np + amount);
-
-  await run(ctx.env.DB, 'UPDATE players SET np=?, max_np=MAX(max_np, ?) WHERE chat_id=? AND user_id=?', np, np, ctx.chat, p.user_id);
-  await say(ctx, `✨ باف انرژی: ${mention(p)} → 🔮 ${np}`);
+  const player = await adjustPlayerNp(ctx.env, ctx.chat, tid, amount);
+  if (!player) return say(ctx, 'این بازیکن در بازی نیست.');
+  await say(ctx, `✨ باف انرژی: ${mention(player)} → 🔮 ${player.np}`);
 }
 
 export async function effect(ctx) {
